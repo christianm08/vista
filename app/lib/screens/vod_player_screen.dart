@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../data/source_store.dart';
+import '../player/video.dart';
 import '../theme.dart';
 
 /// Un film o un episodio da riprodurre.
@@ -35,7 +36,7 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
   static const _overlayTimeout = Duration(seconds: 4);
 
   final _player = Player();
-  late final _video = VideoController(_player);
+  late final _video = vistaVideoController(_player);
   final _subs = <StreamSubscription<dynamic>>[];
   final _focus = FocusNode(debugLabel: 'vod');
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 import '../data/epg_store.dart';
@@ -9,45 +10,17 @@ import '../theme.dart';
 import '../widgets/channel_logo.dart';
 import '../widgets/epg_guide.dart';
 import '../widgets/focus_card.dart';
+import '../widgets/live_preview.dart';
 import '../widgets/poster_card.dart';
+import '../widgets/tv_drawer.dart';
+import '../widgets/vod_browser.dart';
 import 'channel_settings_screen.dart';
 import 'player_screen.dart';
 import 'series_screen.dart';
 import 'vod_player_screen.dart';
 
-/// Quando il focus entra nel figlio da fuori, lo porta su [target] (la voce
-/// selezionata) invece che sulla voce geometricamente più vicina.
-class _EnterAt extends StatefulWidget {
-  const _EnterAt({required this.target, required this.child});
-  final FocusNode Function() target;
-  final Widget child;
-
-  @override
-  State<_EnterAt> createState() => _EnterAtState();
-}
-
-class _EnterAtState extends State<_EnterAt> {
-  bool _inside = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
-      onFocusChange: (has) {
-        if (has && !_inside) {
-          final t = widget.target();
-          if (t.context != null && !t.hasFocus) t.requestFocus();
-        }
-        _inside = has;
-      },
-      child: widget.child,
-    );
-  }
-}
-
 enum Section {
-  live('Live', Icons.live_tv_rounded),
+  live('Live TV', Icons.live_tv_rounded),
   movies('Film', Icons.movie_outlined),
   series('Serie', Icons.video_library_outlined);
 
@@ -56,9 +29,10 @@ enum Section {
   final IconData icon;
 }
 
-/// Home in stile "10-foot": su TV e PC menu a sinistra (Live, Film, Serie),
-/// colonna delle categorie della lista e contenuto; i canali live sono una
-/// guida TV con l'EPG. Su telefono la stessa struttura in forma compatta.
+/// Home. Su TV e PC la guida TV occupa tutto lo schermo (dettagli del
+/// programma e anteprima in alto, griglia sotto) e il menu con sezioni e
+/// categorie si apre di lato; Film e Serie sono scaffali per categoria.
+/// Su telefono la stessa struttura in forma compatta.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -79,32 +53,15 @@ class _HomeScreenState extends State<HomeScreen> {
   late Section _section;
   final _groupBy = <Section, String?>{}; // null = tutte le categorie
   bool _refreshing = false;
-  Channel? _focusedChannel;
-  bool _railFocused = false;
+  bool _drawerOpen = false;
+  bool _previewOn = true;
+  GuideSelection? _selection;
+  DateTime? _lastBack;
   DateTime _now = DateTime.now();
   late final Timer _clock;
 
-  /// Primo elemento del contenuto: all'apertura il telecomando parte da qui.
-  final _firstItem = FocusNode(debugLabel: 'primo elemento');
-
-  /// Nodi del menu e delle categorie: entrando da fuori nella colonna il focus
-  /// va sulla voce già selezionata, non su quella più vicina.
-  final _navNodes = <Section, FocusNode>{};
-  final _categoryNodes = <String, FocusNode>{};
-
-  FocusNode _navNode(Section s) =>
-      _navNodes.putIfAbsent(s, () => FocusNode(debugLabel: 'menu ${s.name}'));
-
-  FocusNode _categoryNode(Section s, String? g) => _categoryNodes.putIfAbsent(
-      '${s.name}|${g ?? ''}', () => FocusNode(debugLabel: 'categoria $g'));
-
-  /// Seleziona solo se il focus resta sulla voce (non se è solo di passaggio
-  /// o se viene subito spostato sulla voce selezionata).
-  void _selectWhenSettled(FocusNode node, VoidCallback select) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && node.hasFocus) select();
-    });
-  }
+  final _gridFocus = FocusNode(debugLabel: 'guida');
+  final _vodFocus = FocusNode(debugLabel: 'primo titolo');
 
   Catalog get _catalog => widget.library.catalog;
 
@@ -119,18 +76,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _firstItem.context != null) _firstItem.requestFocus();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusContent());
   }
 
   @override
   void dispose() {
     _clock.cancel();
-    _firstItem.dispose();
-    for (final n in [..._navNodes.values, ..._categoryNodes.values]) {
-      n.dispose();
-    }
+    _gridFocus.dispose();
+    _vodFocus.dispose();
     super.dispose();
   }
 
@@ -175,51 +128,82 @@ class _HomeScreenState extends State<HomeScreen> {
     return g == null ? items : items.where((i) => group(i) == g).toList();
   }
 
-  void _select(Section s) {
-    if (_section != s) setState(() => _section = s);
+  // --- navigazione -------------------------------------------------------------
+
+  void _focusContent() {
+    if (!mounted) return;
+    final node = _section == Section.live ? _gridFocus : _vodFocus;
+    if (node.context != null) node.requestFocus();
   }
 
-  void _selectGroup(String? g) {
-    if (_groupBy[_section] != g) setState(() => _groupBy[_section] = g);
+  void _openDrawer() => setState(() => _drawerOpen = true);
+
+  void _closeDrawer() {
+    setState(() => _drawerOpen = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusContent());
   }
 
-  // --- azioni ----------------------------------------------------------------
-
-  void _playChannel(List<Channel> list, Channel c) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => PlayerScreen(channels: list, initialIndex: list.indexOf(c)),
-    ));
+  void _switchSection(Section s) {
+    setState(() {
+      _section = s;
+      _selection = null;
+    });
+    _closeDrawer();
   }
 
-  void _playMovie(Movie m) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => VodPlayerScreen(items: [
+  void _pickGroup(String? g) {
+    setState(() {
+      _groupBy[_section] = g;
+      _selection = null;
+    });
+    _closeDrawer();
+  }
+
+  /// Indietro: apre il menu; a menu aperto, una seconda pressione esce.
+  void _onBack() {
+    if (!_drawerOpen) {
+      _openDrawer();
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastBack != null && now.difference(_lastBack!) < const Duration(seconds: 2)) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBack = now;
+    _toast('Premi di nuovo Indietro per uscire');
+  }
+
+  /// Apre una schermata spegnendo l'anteprima (un solo video alla volta).
+  Future<void> _push(Widget screen) async {
+    setState(() => _previewOn = false);
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    if (!mounted) return;
+    setState(() => _previewOn = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusContent());
+  }
+
+  void _playChannel(List<Channel> list, Channel c) => _push(PlayerScreen(
+        channels: list,
+        initialIndex: list.indexOf(c),
+        guide: widget.epg.guide.value,
+      ));
+
+  void _playMovie(Movie m) => _push(VodPlayerScreen(items: [
         VodItem(
           title: m.title,
           subtitle: [if (m.year != null) '${m.year}', m.group].join(' · '),
           url: m.url,
         ),
-      ]),
-    ));
-  }
+      ]));
 
-  void _openSeries(Series s) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => SeriesScreen(series: s, source: widget.library.source, store: widget.store),
-    ));
-  }
+  void _openSeries(Series s) => _push(
+      SeriesScreen(series: s, source: widget.library.source, store: widget.store));
 
-  void _openChannelSettings() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ChannelSettingsScreen(store: widget.store),
-    ));
-  }
+  void _openChannelSettings() => _push(ChannelSettingsScreen(store: widget.store));
 
-  void _editChannel(Channel c) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ChannelEditScreen(store: widget.store, channelKey: c.key),
-    ));
-  }
+  void _editChannel(Channel c) =>
+      _push(ChannelEditScreen(store: widget.store, channelKey: c.key));
 
   Future<void> _refresh() async {
     setState(() => _refreshing = true);
@@ -238,7 +222,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _toast(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
   }
 
   Future<void> _confirmChange() async {
@@ -273,327 +259,164 @@ class _HomeScreenState extends State<HomeScreen> {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     return ValueListenableBuilder<EpgGuide>(
       valueListenable: widget.epg.guide,
-      builder: (context, guide, _) => wide ? _tenFoot(guide) : _compact(guide),
+      builder: (context, guide, _) => wide ? _tv(guide) : _compact(guide),
     );
   }
 
   // ===== TV e PC ===============================================================
 
-  /// Su una TV 1080p ci sono 960 punti logici: il menu resta a sole icone e
-  /// si allarga con le etichette quando ha il focus. Sui PC grandi resta aperto.
-  Widget _tenFoot(EpgGuide guide) {
-    final width = MediaQuery.sizeOf(context).width;
-    final roomy = width >= 1400;
-    final railOpen = roomy || _railFocused;
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(roomy ? 32 : 20, roomy ? 24 : 16, roomy ? 32 : 20, 0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Focus(
-                canRequestFocus: false,
-                skipTraversal: true,
-                onFocusChange: (f) => setState(() => _railFocused = f),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
-                  width: railOpen ? 210 : 76,
-                  child: _EnterAt(
-                    target: () => _navNode(_section),
-                    child: FocusTraversalGroup(child: _sidebar(railOpen)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              SizedBox(
-                width: roomy ? 280 : 210,
-                child: _EnterAt(
-                  target: () => _categoryNode(_section, _groupBy[_section]),
-                  child: FocusTraversalGroup(child: _categoryColumn()),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: FocusTraversalGroup(
+  Widget _tv(EpgGuide guide) {
+    final groups = _groups(_section);
+    final current = _groupBy[_section];
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onBack();
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                   child: switch (_section) {
-                    Section.live => _liveGuide(guide),
-                    Section.movies =>
-                      _posterGrid(_filter(_catalog.movies, (m) => m.group), _moviePoster),
-                    Section.series =>
-                      _posterGrid(_filter(_catalog.series, (s) => s.group), _seriesPoster),
+                    Section.live => _liveTv(guide),
+                    Section.movies => VodBrowser<Movie>(
+                        items: _catalog.movies,
+                        group: current,
+                        firstFocus: _vodFocus,
+                        onOpenMenu: _openDrawer,
+                        onOpen: _playMovie,
+                        info: (m) => VodInfo(
+                            title: m.title,
+                            poster: m.poster,
+                            group: m.group,
+                            year: m.year,
+                            rating: m.rating,
+                            plot: m.plot),
+                      ),
+                    Section.series => VodBrowser<Series>(
+                        items: _catalog.series,
+                        group: current,
+                        firstFocus: _vodFocus,
+                        onOpenMenu: _openDrawer,
+                        onOpen: _openSeries,
+                        info: (s) => VodInfo(
+                            title: s.title,
+                            poster: s.poster,
+                            group: s.group,
+                            year: s.year,
+                            rating: s.rating,
+                            plot: s.plot),
+                      ),
                   },
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _sidebar(bool open) {
-    final t = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Glass(
-        radius: VistaRadius.card,
-        padding: EdgeInsets.fromLTRB(open ? 12 : 8, 18, open ? 12 : 8, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: EdgeInsets.only(left: open ? 8 : 0, bottom: 18),
-              child: Text(open ? 'Vista' : 'V',
-                  textAlign: open ? TextAlign.start : TextAlign.center,
-                  maxLines: 1,
-                  style: t.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
             ),
-            for (final s in _sections) ...[
-              _navItem(s, open),
-              const SizedBox(height: 8),
-            ],
-            const Spacer(),
-            if (_catalog.live.channels.isNotEmpty)
-              _smallAction(Icons.tune_rounded, 'Canali', _openChannelSettings, open),
-            if (_canRefresh)
-              _smallAction(Icons.refresh_rounded, _refreshing ? 'Aggiorno…' : 'Aggiorna',
-                  _refreshing ? null : _refresh, open),
-            _smallAction(Icons.swap_horiz_rounded, 'Cambia fonte', _confirmChange, open),
-            if (open) ...[
-              const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(widget.library.source.label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.bodySmall?.copyWith(color: VistaColors.textTertiary)),
+            Positioned.fill(
+              child: TvDrawer(
+                open: _drawerOpen,
+                onClose: _closeDrawer,
+                footer: widget.library.source.label,
+                sections: [
+                  for (final s in _sections)
+                    DrawerEntry(
+                      icon: s.icon,
+                      label: s.label,
+                      trailing: '${_count(s)}',
+                      selected: s == _section,
+                      onTap: () => _switchSection(s),
+                    ),
+                ],
+                groups: [
+                  if (groups.length > 1) ...[
+                    DrawerEntry(
+                      label: 'Tutte',
+                      trailing: '${_count(_section)}',
+                      selected: current == null,
+                      onTap: () => _pickGroup(null),
+                    ),
+                    for (final g in groups)
+                      DrawerEntry(
+                        label: g,
+                        trailing: '${_count(_section, g)}',
+                        selected: current == g,
+                        onTap: () => _pickGroup(g),
+                      ),
+                  ],
+                ],
+                actions: [
+                  if (_catalog.live.channels.isNotEmpty)
+                    DrawerEntry(
+                        icon: Icons.tune_rounded,
+                        label: 'Canali',
+                        onTap: () {
+                          _closeDrawer();
+                          _openChannelSettings();
+                        }),
+                  if (_canRefresh)
+                    DrawerEntry(
+                        icon: Icons.refresh_rounded,
+                        label: _refreshing ? 'Aggiorno…' : 'Aggiorna',
+                        onTap: _refreshing ? () {} : _refresh),
+                  DrawerEntry(
+                      icon: Icons.swap_horiz_rounded,
+                      label: 'Cambia fonte',
+                      onTap: _confirmChange),
+                ],
               ),
-            ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _navItem(Section s, bool open) {
-    final selected = _section == s;
-    final iconColor = selected ? VistaColors.onPrimary : Colors.white;
-    final node = _navNode(s);
-    return FocusCard(
-      radius: 999,
-      focusScale: 1.04,
-      focusNode: node,
-      selected: selected,
-      fill: Colors.transparent,
-      padding: EdgeInsets.symmetric(horizontal: open ? 14 : 0, vertical: 12),
-      onTap: () => _select(s),
-      onFocusChange: (f) {
-        if (f) _selectWhenSettled(node, () => _select(s));
-      },
-      child: open
-          ? Row(
-              children: [
-                Icon(s.icon, size: 22, color: iconColor),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(s.label.toUpperCase(),
-                      maxLines: 1,
-                      style: const TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.6)),
-                ),
-                Text('${_count(s)}',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: selected ? VistaColors.onPrimary : VistaColors.textTertiary)),
-              ],
-            )
-          : Center(child: Icon(s.icon, size: 24, color: iconColor)),
-    );
-  }
-
-  Widget _smallAction(IconData icon, String label, VoidCallback? onTap, bool open) {
-    return Opacity(
-      opacity: onTap == null ? 0.5 : 1,
-      child: FocusCard(
-        radius: 999,
-        focusScale: 1.04,
-        fill: Colors.transparent,
-        padding: EdgeInsets.symmetric(horizontal: open ? 12 : 0, vertical: 9),
-        onTap: onTap ?? () {},
-        child: open
-            ? Row(
-                children: [
-                  Icon(icon, size: 20, color: VistaColors.textSecondary),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, color: VistaColors.textSecondary)),
-                  ),
-                ],
-              )
-            : Center(child: Icon(icon, size: 20, color: VistaColors.textSecondary)),
-      ),
-    );
-  }
-
-  Widget _categoryColumn() {
-    final t = Theme.of(context).textTheme;
-    final groups = _groups(_section);
-    final current = _groupBy[_section];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(_section.label.toUpperCase(),
-                  style: t.labelMedium?.copyWith(
-                      color: VistaColors.accent, fontWeight: FontWeight.w800, letterSpacing: 1)),
-              Text('Categorie', style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(4, 4, 8, 24),
-            itemCount: groups.length + 1,
-            itemBuilder: (_, i) {
-              final g = i == 0 ? null : groups[i - 1];
-              final selected = current == g;
-              final node = _categoryNode(_section, g);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: FocusCard(
-                  radius: 16,
-                  focusScale: 1.03,
-                  focusNode: node,
-                  selected: selected,
-                  fill: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  onTap: () => _selectGroup(g),
-                  onFocusChange: (f) {
-                    if (f) _selectWhenSettled(node, () => _selectGroup(g));
-                  },
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(g ?? 'Tutte',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                      Text('${_count(_section, g)}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: selected
-                                  ? VistaColors.onPrimary
-                                  : VistaColors.textTertiary)),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _liveGuide(EpgGuide guide) {
+  Widget _liveTv(EpgGuide guide) {
     final channels = _filter(_channels, (c) => c.group);
-    if (channels.isEmpty) return _empty('Nessun canale in questa categoria.');
-    final focused =
-        channels.contains(_focusedChannel) ? _focusedChannel! : channels.first;
-    return LayoutBuilder(builder: (context, box) {
-      final metrics = GuideMetrics.of(box.maxWidth);
-      final window = GuideWindow(_now, minutes: metrics.minutes);
-      return _guideColumn(guide, channels, focused, metrics, window);
-    });
-  }
-
-  Widget _guideColumn(EpgGuide guide, List<Channel> channels, Channel focused,
-      GuideMetrics metrics, GuideWindow window) {
+    if (channels.isEmpty) {
+      return _empty('Nessun canale in questa categoria.\nPremi Indietro per il menu.');
+    }
+    final height = MediaQuery.sizeOf(context).height;
+    final selection = _selection != null && channels.contains(_selection!.channel)
+        ? _selection
+        : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ValueListenableBuilder<String>(
-          valueListenable: widget.epg.status,
-          builder: (context, status, _) => NowPlayingPanel(
-            channel: focused,
-            upcoming: guide.upcoming(focused, now: _now),
-            now: _now,
-            status: status,
+        SizedBox(
+          height: (height * 0.36).clamp(170.0, 300.0),
+          child: ValueListenableBuilder<String>(
+            valueListenable: widget.epg.status,
+            builder: (context, status, _) => GuideHeader(
+              selection: selection,
+              now: _now,
+              category: _groupBy[Section.live],
+              status: status,
+              preview: LivePreview(
+                channel: selection?.channel ?? channels.first,
+                enabled: _previewOn,
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 14),
-        GuideRuler(window: window, now: _now, metrics: metrics),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.only(bottom: 32, right: 4),
-            itemCount: channels.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (_, i) {
-              final c = channels[i];
-              return GuideRow(
-                channel: c,
-                programmes: guide.forChannel(c, now: _now),
-                window: window,
-                now: _now,
-                metrics: metrics,
-                focusNode: i == 0 ? _firstItem : null,
-                onFocused: () {
-                  if (_focusedChannel != c) setState(() => _focusedChannel = c);
-                },
-                onTap: () => _playChannel(channels, c),
-                onLongPress: () => _editChannel(c),
-              );
-            },
+          child: EpgGrid(
+            channels: channels,
+            guide: guide,
+            now: _now,
+            focusNode: _gridFocus,
+            onSelectionChanged: (s) => setState(() => _selection = s),
+            onPlay: (c) => _playChannel(channels, c),
+            onEdit: _editChannel,
+            onOpenMenu: _openDrawer,
           ),
         ),
       ],
     );
   }
-
-  Widget _posterGrid<T>(List<T> items, Widget Function(T, {FocusNode? focusNode}) poster) {
-    if (items.isEmpty) return _empty('Niente in questa categoria.');
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 40),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 190,
-        childAspectRatio: 2 / 3,
-        crossAxisSpacing: 18,
-        mainAxisSpacing: 18,
-      ),
-      itemCount: items.length,
-      itemBuilder: (_, i) => poster(items[i], focusNode: i == 0 ? _firstItem : null),
-    );
-  }
-
-  Widget _moviePoster(Movie m, {FocusNode? focusNode}) => PosterCard(
-        title: m.title,
-        image: m.poster,
-        focusNode: focusNode,
-        caption: [if (m.year != null) '${m.year}', if (m.rating.isNotEmpty) '★ ${m.rating}']
-            .join(' · '),
-        onTap: () => _playMovie(m),
-      );
-
-  Widget _seriesPoster(Series s, {FocusNode? focusNode}) => PosterCard(
-        title: s.title,
-        image: s.poster,
-        focusNode: focusNode,
-        caption: [if (s.year != null) '${s.year}', if (s.rating.isNotEmpty) '★ ${s.rating}']
-            .join(' · '),
-        onTap: () => _openSeries(s),
-      );
 
   Widget _empty(String text) => Center(
         child: Text(text,
@@ -602,6 +425,22 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
   // ===== Telefono ==============================================================
+
+  Widget _moviePoster(Movie m) => PosterCard(
+        title: m.title,
+        image: m.poster,
+        caption: [if (m.year != null) '${m.year}', if (m.rating.isNotEmpty) '★ ${m.rating}']
+            .join(' · '),
+        onTap: () => _playMovie(m),
+      );
+
+  Widget _seriesPoster(Series s) => PosterCard(
+        title: s.title,
+        image: s.poster,
+        caption: [if (s.year != null) '${s.year}', if (s.rating.isNotEmpty) '★ ${s.rating}']
+            .join(' · '),
+        onTap: () => _openSeries(s),
+      );
 
   Widget _compact(EpgGuide guide) {
     final t = Theme.of(context).textTheme;
@@ -614,7 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundColor: const Color(0xE610141B),
               indicatorColor: Colors.white,
               selectedIndex: sections.indexOf(_section),
-              onDestinationSelected: (i) => _select(sections[i]),
+              onDestinationSelected: (i) => setState(() => _section = sections[i]),
               destinations: [
                 for (final s in sections)
                   NavigationDestination(
@@ -670,7 +509,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           radius: 999,
                           selected: _groupBy[_section] == g,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                          onTap: () => _selectGroup(g),
+                          onTap: () => setState(() => _groupBy[_section] = g),
                           child: Text(g ?? 'Tutte',
                               style: const TextStyle(fontWeight: FontWeight.w600)),
                         ),
@@ -683,10 +522,10 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               sliver: switch (_section) {
                 Section.live => _compactLive(guide),
-                Section.movies => _compactPosters(
-                    _filter(_catalog.movies, (m) => m.group), _moviePoster),
-                Section.series => _compactPosters(
-                    _filter(_catalog.series, (s) => s.group), _seriesPoster),
+                Section.movies =>
+                  _compactPosters(_filter(_catalog.movies, (m) => m.group), _moviePoster),
+                Section.series =>
+                  _compactPosters(_filter(_catalog.series, (s) => s.group), _seriesPoster),
               },
             ),
           ],
@@ -747,8 +586,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _compactPosters<T>(
-          List<T> items, Widget Function(T, {FocusNode? focusNode}) poster) =>
+  Widget _compactPosters<T>(List<T> items, Widget Function(T) poster) =>
       SliverGrid.builder(
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 140,

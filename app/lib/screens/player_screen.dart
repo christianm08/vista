@@ -1,25 +1,36 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
+import '../data/source_store.dart' show redactError;
 import '../player/stream_picker.dart';
+import '../player/video.dart';
 import '../theme.dart';
 import '../widgets/channel_logo.dart';
+import '../widgets/epg_guide.dart';
 import '../widgets/focus_card.dart';
 
-/// Riproduzione a schermo intero con cambio flusso automatico.
+/// Riproduzione dal vivo a schermo intero con cambio flusso automatico.
 ///
-/// Telecomando: su/giù cambia canale, OK mostra il pannello con la scelta
-/// del flusso, Indietro chiude il pannello o esce.
+/// Telecomando: su/giù o canale ± cambiano canale e mostrano la barra con il
+/// programma; OK apre l'elenco dei canali sopra il video; destra/sinistra
+/// mostrano la barra con la scelta del flusso; Indietro chiude o esce.
 class PlayerScreen extends StatefulWidget {
-  const PlayerScreen({super.key, required this.channels, required this.initialIndex});
+  const PlayerScreen({
+    super.key,
+    required this.channels,
+    required this.initialIndex,
+    this.guide,
+  });
 
   final List<Channel> channels;
   final int initialIndex;
+  final EpgGuide? guide;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -27,21 +38,29 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   static const _stallTimeout = Duration(seconds: 12);
-  static const _overlayTimeout = Duration(seconds: 5);
+  static const _bannerTimeout = Duration(seconds: 5);
+  static const _listRow = 64.0;
 
-  final _player = Player();
-  late final _video = VideoController(_player);
+  final _player = Player(
+    configuration: const PlayerConfiguration(
+        logLevel: kDebugMode ? MPVLogLevel.warn : MPVLogLevel.error),
+  );
+  late final _video = vistaVideoController(_player);
   final _subs = <StreamSubscription<dynamic>>[];
   final _rootFocus = FocusNode(debugLabel: 'player');
+  final _listFocus = FocusNode(debugLabel: 'canale corrente nell\'elenco');
+  final _listScroll = ScrollController();
 
   late int _channelIndex = widget.initialIndex;
   late StreamPicker _picker;
   Timer? _watchdog;
-  Timer? _overlayTimer;
-  bool _overlay = true;
+  Timer? _bannerTimer;
+  bool _banner = true;
+  bool _list = false;
   bool _playing = false;
   String? _message;
   int? _height;
+  DateTime _now = DateTime.now();
 
   Channel get _channel => widget.channels[_channelIndex];
 
@@ -51,39 +70,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _subs
       // Il testo dell'errore contiene l'URL (con Xtream, anche le credenziali).
       ..add(_player.stream.error.listen((_) => _onFail('errore di riproduzione')))
-      ..add(_player.stream.playing.listen((p) {
-        if (p) _watchdog?.cancel();
-        if (mounted) setState(() => _playing = p);
+      // "playing" diventa vero appena parte il caricamento: il canale funziona
+      // davvero solo quando arrivano i fotogrammi (o l'audio avanza).
+      ..add(_player.stream.height.listen((h) {
+        if (h != null && h > 0) _onFrames();
+        if (mounted) setState(() => _height = h);
+      }))
+      ..add(_player.stream.position.listen((p) {
+        if (p > const Duration(seconds: 2)) _onFrames();
       }))
       ..add(_player.stream.buffering.listen((b) {
-        if (b) {
-          _armWatchdog();
-        } else if (_playing) {
-          _watchdog?.cancel();
-        }
-      }))
-      ..add(_player.stream.height.listen((h) {
-        if (mounted) setState(() => _height = h);
+        if (b && _playing) _armWatchdog();
+        if (!b && _playing) _watchdog?.cancel();
       }));
+    if (kDebugMode) {
+      _subs.add(_player.stream.log.listen(
+          (l) => debugPrint(redactError('mpv ${l.prefix}: ${l.text}'))));
+    }
     _tuneChannel(_channelIndex);
+  }
+
+  void _onFrames() {
+    _watchdog?.cancel();
+    if (mounted && !_playing) setState(() => _playing = true);
   }
 
   @override
   void dispose() {
     _watchdog?.cancel();
-    _overlayTimer?.cancel();
+    _bannerTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
     _player.dispose();
     _rootFocus.dispose();
+    _listFocus.dispose();
+    _listScroll.dispose();
     super.dispose();
   }
 
   void _tuneChannel(int i) {
     _channelIndex = i;
     _picker = StreamPicker(_channel.streams);
-    _showOverlay();
+    _showBanner();
     _open();
   }
 
@@ -119,20 +148,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _showOverlay() {
-    setState(() => _overlay = true);
-    _overlayTimer?.cancel();
-    _overlayTimer = Timer(_overlayTimeout, () {
+  // --- pannelli ----------------------------------------------------------------
+
+  void _showBanner() {
+    setState(() {
+      _banner = true;
+      _now = DateTime.now();
+    });
+    _bannerTimer?.cancel();
+    _bannerTimer = Timer(_bannerTimeout, () {
       if (mounted && _message == null) {
-        setState(() => _overlay = false);
-        _rootFocus.requestFocus();
+        setState(() => _banner = false);
+        if (!_list) _rootFocus.requestFocus();
       }
     });
   }
 
-  void _hideOverlay() {
-    _overlayTimer?.cancel();
-    setState(() => _overlay = false);
+  void _hideBanner() {
+    _bannerTimer?.cancel();
+    setState(() => _banner = false);
+    _rootFocus.requestFocus();
+  }
+
+  void _openList() {
+    _bannerTimer?.cancel();
+    setState(() {
+      _list = true;
+      _banner = false;
+      _now = DateTime.now();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_listScroll.hasClients) {
+        final target = _channelIndex * _listRow - _listScroll.position.viewportDimension / 2;
+        _listScroll.jumpTo(target.clamp(0.0, _listScroll.position.maxScrollExtent));
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _listFocus.context != null) _listFocus.requestFocus();
+      });
+    });
+  }
+
+  void _closeList() {
+    setState(() => _list = false);
     _rootFocus.requestFocus();
   }
 
@@ -142,9 +200,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    if (e is KeyUpEvent || _list) return KeyEventResult.ignored;
     final k = e.logicalKey;
-    if (!_overlay) {
+    // OK apre sempre l'elenco dei canali, anche con la barra visibile, a meno
+    // che il focus sia su un pulsante del flusso.
+    if (e is KeyDownEvent &&
+        _rootFocus.hasPrimaryFocus &&
+        (k == LogicalKeyboardKey.select ||
+            k == LogicalKeyboardKey.enter ||
+            k == LogicalKeyboardKey.numpadEnter)) {
+      _openList();
+      return KeyEventResult.handled;
+    }
+    if (!_banner) {
       if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp) {
         _zap(-1);
         return KeyEventResult.handled;
@@ -153,15 +221,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _zap(1);
         return KeyEventResult.handled;
       }
-      if (k == LogicalKeyboardKey.select ||
-          k == LogicalKeyboardKey.enter ||
-          k == LogicalKeyboardKey.arrowLeft ||
-          k == LogicalKeyboardKey.arrowRight) {
-        _showOverlay();
+      if (e is KeyDownEvent &&
+          (k == LogicalKeyboardKey.select ||
+              k == LogicalKeyboardKey.enter ||
+              k == LogicalKeyboardKey.numpadEnter)) {
+        _openList();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowLeft ||
+          k == LogicalKeyboardKey.arrowRight ||
+          k == LogicalKeyboardKey.info) {
+        _showBanner();
         return KeyEventResult.handled;
       }
     } else {
-      _showOverlay(); // qualsiasi tasto tiene aperto il pannello
+      // Con la barra aperta i canale ± continuano a cambiare canale.
+      if (k == LogicalKeyboardKey.channelUp) {
+        _zap(-1);
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.channelDown) {
+        _zap(1);
+        return KeyEventResult.handled;
+      }
+      _showBanner(); // qualsiasi tasto tiene aperta la barra
     }
     return KeyEventResult.ignored;
   }
@@ -169,9 +252,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_overlay || _message != null,
+      canPop: !_list && (!_banner || _message != null),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _hideOverlay();
+        if (didPop) return;
+        if (_list) {
+          _closeList();
+        } else {
+          _hideBanner();
+        }
       },
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -181,7 +269,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
           onKeyEvent: _onKey,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => _overlay ? _hideOverlay() : _showOverlay(),
+            onTap: () {
+              if (_list) {
+                _closeList();
+              } else {
+                _banner ? _hideBanner() : _showBanner();
+              }
+            },
+            onDoubleTap: _openList,
             onVerticalDragEnd: (d) {
               final v = d.primaryVelocity ?? 0;
               if (v.abs() > 300) _zap(v < 0 ? 1 : -1);
@@ -194,10 +289,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   const Center(child: CircularProgressIndicator()),
                 if (_message != null) _buildMessage(),
                 AnimatedOpacity(
-                  opacity: _overlay ? 1 : 0,
+                  opacity: _banner ? 1 : 0,
                   duration: const Duration(milliseconds: 200),
-                  child: IgnorePointer(ignoring: !_overlay, child: _buildOverlay()),
+                  child: IgnorePointer(ignoring: !_banner, child: _buildBanner()),
                 ),
+                _buildList(),
               ],
             ),
           ),
@@ -209,8 +305,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget _buildMessage() {
     return Center(
       child: Glass(
+        blur: false,
         padding: const EdgeInsets.all(24),
-        fill: const Color(0x6B10161C),
+        fill: const Color(0xCC10161C),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: Text(_message!, textAlign: TextAlign.center),
@@ -219,73 +316,130 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildOverlay() {
+  /// Barra in basso: canale, programma in onda e successivo, flussi.
+  Widget _buildBanner() {
     final t = Theme.of(context).textTheme;
     final real = qualityFromHeight(_height);
     final wide = MediaQuery.sizeOf(context).width >= 900;
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.all(wide ? 40 : 16),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Glass(
-            radius: VistaRadius.card,
-            fill: const Color(0x6B10161C),
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    ChannelLogo(channel: _channel, size: 52),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('${_channel.number}  ${_channel.name}',
-                              style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                          Text(
-                            [
-                              _picker.auto ? 'Auto' : 'Manuale',
-                              'flusso ${_picker.index + 1}/${_picker.streams.length}',
-                              if (real.isNotEmpty) 'reale $real ($_height p)',
-                            ].join(' · '),
-                            style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (_picker.streams.length > 1) ...[
-                  const SizedBox(height: 14),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
+    final upcoming = widget.guide?.upcoming(_channel, now: _now, count: 2) ?? const [];
+    final current = upcoming.where((p) => p.isOnAt(_now)).firstOrNull;
+    final next = upcoming.where((p) => p.start.isAfter(_now)).firstOrNull;
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(wide ? 40 : 16, 48, wide ? 40 : 16, wide ? 28 : 16),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x00000000), Color(0xE6000000)],
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text('${_channel.number}',
+                      style: t.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w800, color: VistaColors.accent)),
+                  const SizedBox(width: 16),
+                  ChannelLogo(channel: _channel, size: 56),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _streamChip('Auto', _picker.auto, () {
-                          _picker.reset();
-                          _open();
-                          _showOverlay();
-                        }),
-                        for (var i = 0; i < _picker.streams.length; i++)
-                          _streamChip(
-                            _picker.streams[i].quality.label,
-                            !_picker.auto && _picker.index == i,
-                            () {
-                              _picker.select(i);
-                              _open();
-                              _showOverlay();
-                            },
-                          ),
+                        Text(_channel.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.titleMedium?.copyWith(color: VistaColors.textSecondary)),
+                        Text(current?.title ?? 'Nessuna informazione sul programma',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
                       ],
                     ),
                   ),
+                  if (wide)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const VistaClock(),
+                        Text(
+                          [
+                            _picker.auto ? 'Auto' : 'Manuale',
+                            if (_picker.streams.length > 1)
+                              'flusso ${_picker.index + 1}/${_picker.streams.length}',
+                            if (real.isNotEmpty) '$real · ${_height}p',
+                          ].join(' · '),
+                          style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+                        ),
+                      ],
+                    ),
                 ],
+              ),
+              if (current != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Text(hhmm(current.start),
+                        style: t.bodySmall?.copyWith(color: VistaColors.textSecondary)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: current.progressAt(_now),
+                          minHeight: 5,
+                          backgroundColor: VistaColors.glassActive,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(hhmm(current.stop),
+                        style: t.bodySmall?.copyWith(color: VistaColors.textSecondary)),
+                  ],
+                ),
               ],
-            ),
+              if (next != null) ...[
+                const SizedBox(height: 8),
+                Text('Dopo · ${hhmm(next.start)}  ${next.title}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyMedium?.copyWith(color: VistaColors.textSecondary)),
+              ],
+              if (_picker.streams.length > 1) ...[
+                const SizedBox(height: 14),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _streamChip('Auto', _picker.auto, () {
+                        _picker.reset();
+                        _open();
+                        _showBanner();
+                      }),
+                      for (var i = 0; i < _picker.streams.length; i++)
+                        _streamChip(
+                          _picker.streams[i].quality.label,
+                          !_picker.auto && _picker.index == i,
+                          () {
+                            _picker.select(i);
+                            _open();
+                            _showBanner();
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -301,6 +455,119 @@ class _PlayerScreenState extends State<PlayerScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         onTap: onTap,
         child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+
+  /// Elenco dei canali sopra il video (OK): si cambia canale senza uscire.
+  Widget _buildList() {
+    final t = Theme.of(context).textTheme;
+    return IgnorePointer(
+      ignoring: !_list,
+      child: ExcludeFocus(
+        excluding: !_list,
+        child: AnimatedOpacity(
+          opacity: _list ? 1 : 0,
+          duration: const Duration(milliseconds: 180),
+          child: Row(
+            children: [
+              Container(
+                width: 360,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xF2080A0E), Color(0xD9080A0E)],
+                  ),
+                ),
+                child: SafeArea(
+                  right: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                        child: Row(
+                          children: [
+                            Text('Canali',
+                                style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                            const Spacer(),
+                            const VistaClock(),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: _listScroll,
+                          itemExtent: _listRow,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          itemCount: widget.channels.length,
+                          itemBuilder: (_, i) => _listItem(i),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _closeList,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _listItem(int i) {
+    final t = Theme.of(context).textTheme;
+    final c = widget.channels[i];
+    final now = widget.guide?.nowOn(c, now: _now);
+    final playing = i == _channelIndex;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: FocusCard(
+        focusNode: playing ? _listFocus : null,
+        radius: 12,
+        focusScale: 1.02,
+        fill: playing ? VistaColors.glassActive : Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        onTap: () {
+          _closeList();
+          if (i != _channelIndex) _tuneChannel(i);
+        },
+        child: Row(
+          children: [
+            SizedBox(
+              width: 34,
+              child: Text('${c.number}',
+                  style: t.labelLarge?.copyWith(
+                      color: playing ? VistaColors.accent : VistaColors.textTertiary,
+                      fontWeight: FontWeight.w800)),
+            ),
+            ChannelLogo(channel: c, size: 38),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(c.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  if (now != null)
+                    Text(now.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.bodySmall?.copyWith(color: VistaColors.textTertiary)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

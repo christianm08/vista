@@ -124,14 +124,18 @@ class VistaBackground extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 85, sigmaY: 85),
-            child: const Stack(
-              children: [
-                _Halo(VistaColors.teal, Alignment(-1.1, -1.0), 0.55),
-                _Halo(VistaColors.peach, Alignment(1.2, -0.3), 0.40),
-                _Halo(VistaColors.violet, Alignment(-0.4, 1.2), 0.50),
-              ],
+          // Lo sfondo non cambia: RepaintBoundary evita di ricalcolare il blur
+          // (costoso sui box TV) a ogni movimento del focus.
+          RepaintBoundary(
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 85, sigmaY: 85),
+              child: const Stack(
+                children: [
+                  _Halo(VistaColors.teal, Alignment(-1.1, -1.0), 0.55),
+                  _Halo(VistaColors.peach, Alignment(1.2, -0.3), 0.40),
+                  _Halo(VistaColors.violet, Alignment(-0.4, 1.2), 0.50),
+                ],
+              ),
             ),
           ),
           child,
@@ -171,6 +175,7 @@ class Glass extends StatelessWidget {
     this.radius = VistaRadius.card,
     this.fill = VistaColors.glass,
     this.padding = EdgeInsets.zero,
+    this.blur = true,
   });
 
   final Widget child;
@@ -178,23 +183,57 @@ class Glass extends StatelessWidget {
   final Color fill;
   final EdgeInsetsGeometry padding;
 
+  /// Il blur dello sfondo è costoso: le superfici che cambiano spesso (guida,
+  /// pannelli sul video) usano solo il riempimento traslucido.
+  final bool blur;
+
   @override
   Widget build(BuildContext context) {
     final r = BorderRadius.circular(radius);
+    final box = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: r,
+        border: Border.all(color: VistaColors.glassBorder),
+      ),
+      child: child,
+    );
+    if (!blur) return box;
     return ClipRRect(
       borderRadius: r,
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: fill,
-            borderRadius: r,
-            border: Border.all(color: VistaColors.glassBorder),
-          ),
-          child: child,
-        ),
+        child: box,
       ),
+    );
+  }
+}
+
+/// Orologio per l'intestazione delle schermate TV, aggiornato ogni 20 s.
+class VistaClock extends StatefulWidget {
+  const VistaClock({super.key, this.style});
+  final TextStyle? style;
+
+  @override
+  State<VistaClock> createState() => _VistaClockState();
+}
+
+class _VistaClockState extends State<VistaClock> {
+  late final _timer = Stream.periodic(const Duration(seconds: 20));
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+      stream: _timer,
+      builder: (context, _) {
+        final t = DateTime.now();
+        return Text(
+          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+          style: widget.style ??
+              Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+        );
+      },
     );
   }
 }

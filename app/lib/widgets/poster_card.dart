@@ -16,9 +16,11 @@ class PosterCard extends StatelessWidget {
     this.badge = '',
     this.autofocus = false,
     this.focusNode,
+    this.onFocusChange,
   });
 
   final FocusNode? focusNode;
+  final ValueChanged<bool>? onFocusChange;
 
   final String title;
   final String image;
@@ -52,6 +54,7 @@ class PosterCard extends StatelessWidget {
     return FocusCard(
       autofocus: autofocus,
       focusNode: focusNode,
+      onFocusChange: onFocusChange,
       radius: VistaRadius.poster,
       onTap: onTap,
       child: ClipRRect(
