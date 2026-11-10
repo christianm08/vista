@@ -49,7 +49,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void initState() {
     super.initState();
     _subs
-      ..add(_player.stream.error.listen((e) => _onFail('errore: $e')))
+      // Il testo dell'errore contiene l'URL (con Xtream, anche le credenziali).
+      ..add(_player.stream.error.listen((_) => _onFail('errore di riproduzione')))
       ..add(_player.stream.playing.listen((p) {
         if (p) _watchdog?.cancel();
         if (mounted) setState(() => _playing = p);

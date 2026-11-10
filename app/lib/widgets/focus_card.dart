@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme.dart';
+
+class _MenuIntent extends Intent {
+  const _MenuIntent();
+}
 
 /// Elemento selezionabile con tocco, mouse e telecomando.
 ///
@@ -11,6 +16,10 @@ class FocusCard extends StatefulWidget {
     super.key,
     required this.child,
     required this.onTap,
+    this.onLongPress,
+    this.onFocusChange,
+    this.focusScale = 1.08,
+    this.focusNode,
     this.radius = VistaRadius.card,
     this.fill = VistaColors.glass,
     this.selected = false,
@@ -20,6 +29,18 @@ class FocusCard extends StatefulWidget {
 
   final Widget child;
   final VoidCallback onTap;
+
+  /// Tocco lungo, oppure tasto Menu del telecomando o della tastiera.
+  final VoidCallback? onLongPress;
+
+  /// Il focus arriva o se ne va (es. per aggiornare un pannello di dettaglio).
+  final ValueChanged<bool>? onFocusChange;
+
+  /// Ingrandimento col focus; 1 per gli elementi larghi come le righe.
+  final double focusScale;
+
+  /// Per spostare il focus qui da codice (es. all'apertura della home).
+  final FocusNode? focusNode;
   final double radius;
   final Color fill;
   final bool selected;
@@ -42,9 +63,17 @@ class _FocusCardState extends State<FocusCard> {
         : (_hovered ? VistaColors.glassHigh : widget.fill);
     return FocusableActionDetector(
       autofocus: widget.autofocus,
+      focusNode: widget.focusNode,
+      onFocusChange: widget.onFocusChange,
       onShowFocusHighlight: (v) => setState(() => _focused = v),
       onShowHoverHighlight: (v) => setState(() => _hovered = v),
       mouseCursor: SystemMouseCursors.click,
+      shortcuts: widget.onLongPress == null
+          ? null
+          : const {
+              SingleActivator(LogicalKeyboardKey.contextMenu): _MenuIntent(),
+              SingleActivator(LogicalKeyboardKey.f10, shift: true): _MenuIntent(),
+            },
       actions: {
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (_) {
@@ -52,11 +81,20 @@ class _FocusCardState extends State<FocusCard> {
             return null;
           },
         ),
+        if (widget.onLongPress != null)
+          _MenuIntent: CallbackAction<_MenuIntent>(
+            onInvoke: (_) {
+              widget.onLongPress!();
+              return null;
+            },
+          ),
       },
       child: GestureDetector(
         onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
+        onSecondaryTap: widget.onLongPress,
         child: AnimatedScale(
-          scale: _focused ? 1.08 : 1.0,
+          scale: _focused ? widget.focusScale : 1.0,
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           child: AnimatedContainer(

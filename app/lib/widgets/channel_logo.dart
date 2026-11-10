@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
+import '../data/channel_logos.dart';
 import '../theme.dart';
 
-/// Logo del canale: `tvg-logo` della lista, altrimenti le iniziali generate.
-/// (iptv-org `logos.json` e tv-logos verranno inseriti qui in mezzo.)
+/// Logo del canale: quello scelto dall'utente, tv-logos (link raw di GitHub),
+/// `tvg-logo` della lista, infine le iniziali generate. Se un'immagine non si
+/// carica si passa alla successiva.
 class ChannelLogo extends StatelessWidget {
   const ChannelLogo({super.key, required this.channel, this.size = 56});
 
@@ -22,13 +24,32 @@ class ChannelLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // L'indice tv-logos arriva da GitHub dopo l'avvio: ridisegna quando c'è.
+    return ValueListenableBuilder(
+      valueListenable: ChannelLogos.notifier,
+      builder: (context, _, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     final mono = _Monogram(
       text: channel.monogram,
       color: _tones[channel.key.hashCode.abs() % _tones.length],
       size: size,
     );
     final r = BorderRadius.circular(size * 0.28);
-    if (channel.logo.isEmpty) return ClipRRect(borderRadius: r, child: mono);
+    final urls = ChannelLogos.candidates(channel);
+    if (urls.isEmpty) return ClipRRect(borderRadius: r, child: mono);
+    final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
+
+    Widget image(int i) => Image.network(
+          urls[i],
+          key: ValueKey(urls[i]),
+          fit: BoxFit.contain,
+          cacheWidth: px,
+          errorBuilder: (_, _, _) => i + 1 < urls.length ? image(i + 1) : mono,
+        );
+
     return ClipRRect(
       borderRadius: r,
       child: Container(
@@ -36,11 +57,7 @@ class ChannelLogo extends StatelessWidget {
         height: size,
         color: VistaColors.glassHigh,
         padding: EdgeInsets.all(size * 0.12),
-        child: Image.network(
-          channel.logo,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => mono,
-        ),
+        child: image(0),
       ),
     );
   }

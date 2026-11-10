@@ -1,13 +1,25 @@
 import 'models.dart';
 
+/// Suffisso di variante attaccato alla qualità: `4K-Q`, `FHD_HQ`, `HD-B`.
+const _variant = r'(?:[-_+]?(?:q|hq|lq|b|bk|raw))?';
+
+RegExp _quality(String words) =>
+    RegExp('\\b($words)$_variant\\b', caseSensitive: false);
+
 /// Parole chiave della qualità, in ordine di priorità. Solo parola intera:
 /// "Rai 4" non è "Rai" in 4K.
 final List<(Quality, RegExp)> _qualities = [
-  (Quality.uhd4k, RegExp(r'\b(4k|uhd|2160p)\b', caseSensitive: false)),
-  (Quality.fhd, RegExp(r'\b(fhd|1080p|1080i)\b', caseSensitive: false)),
-  (Quality.hd, RegExp(r'\b(hd|720p)\b', caseSensitive: false)),
-  (Quality.sd, RegExp(r'\b(sd|576p|576i|480p)\b', caseSensitive: false)),
+  (Quality.uhd4k, _quality('4k|uhd|2160p')),
+  (Quality.fhd, _quality('fhd|1080p|1080i')),
+  (Quality.hd, _quality('hd|720p')),
+  (Quality.sd, _quality('sd|576p|576i|480p')),
 ];
+
+/// Contenuto fra parentesi tonde o quadre (senza parentesi annidate).
+final _bracketGroup = RegExp(r'[\[(]([^\[\]()]*)[\])]');
+final _alnum = RegExp(r'[^a-z0-9]', caseSensitive: false);
+final _emptyBrackets = RegExp(r'[\[(]\s*[\])]');
+final _looseDashes = RegExp(r'(^|\s)[-–—]+(?=\s|$)');
 
 /// `IT:`, `|IT|`, `[ITA]`, `(IT)`, `IT -`, `ITALIA:` all'inizio del nome.
 final _countryPrefix = RegExp(
@@ -15,7 +27,10 @@ final _countryPrefix = RegExp(
   caseSensitive: false,
 );
 final _backupParen = RegExp(r'\((backup|alt|bk|riserva)\)', caseSensitive: false);
-final _noiseWords = RegExp(r'\b(backup|alt|h\.?265|hevc|50fps)\b', caseSensitive: false);
+final _noiseWords = RegExp(
+  r'\b(backup|alt|h\.?26[45]|hevc|hdr(?:10)?|\d{2,3}\s?fps)\b',
+  caseSensitive: false,
+);
 final _separators = RegExp(r'[|_]');
 final _spaces = RegExp(r'\s+');
 final _combiningMarks = RegExp('[̀-ͯ]');
@@ -35,8 +50,9 @@ final List<(RegExp, String)> aliases = [
 ];
 
 /// Normalizza il nome di una voce: toglie il prefisso del paese, riconosce e
-/// toglie la qualità, toglie `(backup)`/`alt`/`HEVC`/`H265`/`50fps`, passa a
-/// minuscolo senza accenti e applica gli [aliases].
+/// toglie la qualità (anche fra parentesi e con varianti come `[4K-Q]`),
+/// toglie `(backup)`/`alt`/`HEVC`/`H265`/`HDR`/`50fps`, passa a minuscolo
+/// senza accenti e applica gli [aliases].
 NormalizedName normalizeName(String name) {
   var n = name.replaceFirst(_countryPrefix, '');
 
@@ -47,14 +63,18 @@ NormalizedName normalizeName(String name) {
       break;
     }
   }
+
+  n = n.replaceAll(_backupParen, ' ').replaceAllMapped(_bracketGroup, _dropTagGroup);
   for (final (_, re) in _qualities) {
     n = n.replaceAll(re, ' ');
   }
 
-  n = n.replaceAll(_backupParen, ' ').replaceAll(_noiseWords, ' ');
+  n = n.replaceAll(_noiseWords, ' ');
   n = removeAccents(n)
       .toLowerCase()
       .replaceAll(_separators, ' ')
+      .replaceAll(_emptyBrackets, ' ')
+      .replaceAll(_looseDashes, ' ')
       .replaceAll(_spaces, ' ')
       .trim();
   for (final (re, to) in aliases) {
@@ -62,6 +82,26 @@ NormalizedName normalizeName(String name) {
   }
   n = n.replaceAll(_spaces, ' ').trim();
   return NormalizedName(n, q);
+}
+
+/// Una parentesi che contiene solo etichette tecniche (`[4K-Q]`, `(FHD)`,
+/// `[HEVC]`, `[4K HDR]`) sparisce del tutto; il resto (`(Lazio)`, `(+1)`)
+/// resta nel nome.
+String _dropTagGroup(Match m) {
+  var inner = m.group(1)!;
+  var tagged = false;
+  for (final (_, re) in _qualities) {
+    if (re.hasMatch(inner)) {
+      tagged = true;
+      inner = inner.replaceAll(re, ' ');
+    }
+  }
+  if (_noiseWords.hasMatch(inner)) {
+    tagged = true;
+    inner = inner.replaceAll(_noiseWords, ' ');
+  }
+  final rest = inner.replaceAll(_alnum, '');
+  return rest.isEmpty && (tagged || inner.trim().isEmpty) ? ' ' : m.group(0)!;
 }
 
 const _accentMap = {
@@ -104,13 +144,14 @@ const _upperWords = {'tv', 'tg', 'tgr', 'hd', 'mtv'};
 String displayName(String key) {
   final o = _displayOverrides[key];
   if (o != null) return o;
-  return key
-      .split(' ')
-      .map((w) => _upperWords.contains(w)
-          ? w.toUpperCase()
-          : (w.isEmpty ? w : w[0].toUpperCase() + w.substring(1)))
-      .join(' ');
+  return key.split(' ').map((w) {
+    if (_upperWords.contains(w)) return w.toUpperCase();
+    // Prima lettera maiuscola anche dopo una parentesi: "(lazio)" → "(Lazio)".
+    return w.replaceFirstMapped(_firstLetter, (m) => m[0]!.toUpperCase());
+  }).join(' ');
 }
+
+final _firstLetter = RegExp(r'[a-z]');
 
 final _startsWithPlusOrDigit = RegExp(r'^[+\d]');
 final _hasDigit = RegExp(r'\d');

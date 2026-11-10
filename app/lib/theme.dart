@@ -56,21 +56,35 @@ ThemeData buildVistaTheme() {
     textTheme: text,
     progressIndicatorTheme:
         const ProgressIndicatorThemeData(color: VistaColors.accent),
+    // Col telecomando il focus deve vedersi sempre: bordo spesso e, sul
+    // pulsante bianco, alone color pesca.
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: Colors.white,
         foregroundColor: VistaColors.onPrimary,
+        disabledBackgroundColor: VistaColors.glassActive,
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
         textStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+      ).copyWith(
+        side: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.focused)
+            ? const BorderSide(color: VistaColors.accent, width: 4)
+            : BorderSide.none),
+        overlayColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.focused) ? const Color(0x22E08A55) : null),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: Colors.white,
-        side: const BorderSide(color: VistaColors.glassBorder),
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+      ).copyWith(
+        side: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.focused)
+            ? const BorderSide(color: Colors.white, width: 3)
+            : const BorderSide(color: VistaColors.glassBorder)),
+        backgroundColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.focused) ? VistaColors.glassActive : null),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(

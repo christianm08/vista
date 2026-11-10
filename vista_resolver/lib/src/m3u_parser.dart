@@ -32,6 +32,7 @@ M3uPlaylist parseM3u(String text) {
         tvgId: attrs['tvg-id'] ?? '',
         logo: attrs['tvg-logo'] ?? '',
         group: _orDefault(attrs['group-title'], 'Altri'),
+        declaredType: attrs['tvg-type'] ?? attrs['type'] ?? '',
       );
     } else if (!line.startsWith('#') && cur != null) {
       entries.add(M3uEntry(
@@ -40,6 +41,7 @@ M3uPlaylist parseM3u(String text) {
         tvgId: cur.tvgId,
         logo: cur.logo,
         group: cur.group,
+        declaredType: cur.declaredType,
       ));
       cur = null;
     }
@@ -56,9 +58,11 @@ class _Pending {
     required this.tvgId,
     required this.logo,
     required this.group,
+    required this.declaredType,
   });
   final String name;
   final String tvgId;
   final String logo;
   final String group;
+  final String declaredType;
 }

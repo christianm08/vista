@@ -62,12 +62,40 @@ void main() {
       'Sky TG 24 HD': ('sky tg24', Quality.hd),
       'Canale Città HD': ('canale citta', Quality.hd),
       'Rai_Storia': ('rai storia', Quality.auto),
+      // etichette fra parentesi e varianti della qualità
+      'Rai 1 [4K-Q]': ('rai 1', Quality.uhd4k),
+      'IT: Rai 1 [FHD-Q]': ('rai 1', Quality.fhd),
+      'Rai 1 (HD)': ('rai 1', Quality.hd),
+      'Rai 1 4K-Q': ('rai 1', Quality.uhd4k),
+      'Rai 1 FHD_HQ': ('rai 1', Quality.fhd),
+      'Canale 5 [HEVC] [FHD]': ('canale 5', Quality.fhd),
+      'Rai 1 [4K HDR]': ('rai 1', Quality.uhd4k),
+      'Rai 2 - FHD': ('rai 2', Quality.fhd),
+      'Rai 3 TGR (Lazio) [HD-B]': ('rai 3 tgr (lazio)', Quality.hd),
+      'Canale 5 (+1) [SD]': ('canale 5 (+1)', Quality.sd),
+      'Rai 4 [Q]': ('rai 4 [q]', Quality.auto),
     };
     cases.forEach((input, expected) {
       test('"$input" → ${expected.$1} / ${expected.$2.label}', () {
         expect(normalizeName(input), NormalizedName(expected.$1, expected.$2));
       });
     });
+  });
+
+  test('le varianti [4K-Q], [FHD-Q], HD si raggruppano in un canale', () {
+    final r = resolveChannels(parseM3u(m3u([
+      '#EXTINF:-1,IT: Rai 1 [4K-Q]',
+      'http://s/4kq.m3u8',
+      '#EXTINF:-1,IT: Rai 1 [FHD-Q]',
+      'http://s/fhdq.m3u8',
+      '#EXTINF:-1,IT: Rai 1 HD',
+      'http://s/hd.m3u8',
+      '#EXTINF:-1,IT: Rai 4 [FHD-Q]',
+      'http://s/rai4.m3u8',
+    ])));
+    expect(r.channels.map((c) => c.name), ['Rai 1', 'Rai 4']);
+    expect(r.channels.first.streams.map((s) => s.quality),
+        [Quality.uhd4k, Quality.fhd, Quality.hd]);
   });
 
   group('tvgIdKey', () {
