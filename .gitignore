@@ -1,0 +1,26 @@
+# Dart / Flutter
+.dart_tool/
+build/
+.packages
+.pub-cache/
+.pub/
+coverage/
+
+# Pacchetto libreria: il lock non si versiona (l'app invece lo tiene)
+vista_resolver/pubspec.lock
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Liste e credenziali: mai nel repository
+*.m3u
+*.m3u8
+!vista_resolver/test/fixtures/*.m3u
+.env
+*.keystore
+*.jks
+key.properties

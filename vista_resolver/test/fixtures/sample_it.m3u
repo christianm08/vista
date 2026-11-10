@@ -1,0 +1,61 @@
+#EXTM3U x-tvg-url="https://epg.example/guida-it.xml.gz"
+#EXTINF:-1 tvg-id="Rai1.it" group-title="Nazionali",Rai 1 FHD
+https://demo.example/rai1/fhd.m3u8
+#EXTINF:-1 tvg-id="Rai1.it@HD" group-title="Nazionali",RAI 1 HD
+https://demo.example/rai1/hd.m3u8
+#EXTINF:-1 group-title="Nazionali",IT: Rai Uno SD
+https://demo.example/rai1/sd.m3u8
+#EXTINF:-1 group-title="Nazionali",Rai 1 UHD
+https://demo.example/rai1/uhd.m3u8
+#EXTINF:-1 tvg-id="Rai2.it" group-title="Nazionali",Rai 2 HD
+https://demo.example/rai2/hd.m3u8
+#EXTINF:-1 group-title="Nazionali",Rai 2 SD
+https://demo.example/rai2/sd.m3u8
+#EXTINF:-1 tvg-id="Rai3.it" group-title="Nazionali",Rai 3 HD
+https://demo.example/rai3/hd.m3u8
+#EXTINF:-1 group-title="Regionali",Rai 3 TGR Lazio
+https://demo.example/rai3-lazio/sd.m3u8
+#EXTINF:-1 group-title="Nazionali",Rete 4 HD
+https://demo.example/rete4/hd.m3u8
+#EXTINF:-1 tvg-id="Canale5.it" group-title="Nazionali",Canale 5 FHD
+https://demo.example/canale5/fhd.m3u8
+#EXTINF:-1 group-title="Nazionali",Canale5 HD
+https://demo.example/canale5/hd.m3u8
+#EXTINF:-1 group-title="Nazionali",Canale 5 +1
+https://demo.example/canale5-plus1/sd.m3u8
+#EXTINF:-1 group-title="Nazionali",Italia 1 HD
+https://demo.example/italia1/hd.m3u8
+#EXTINF:-1 group-title="Nazionali",Italia1 SD
+https://demo.example/italia1/sd.m3u8
+#EXTINF:-1 tvg-id="La7.it" group-title="Nazionali",La7 HD
+https://demo.example/la7/hd.m3u8
+#EXTINF:-1 group-title="Nazionali",LA 7 SD
+https://demo.example/la7/sd.m3u8
+#EXTINF:-1 group-title="Nazionali",TV8 HD
+https://demo.example/tv8/hd.m3u8
+#EXTINF:-1 group-title="Nazionali",Nove HD
+https://demo.example/nove/hd.m3u8
+#EXTINF:-1 group-title="Intrattenimento",Rai 4 HD
+https://demo.example/rai4/hd.m3u8
+#EXTINF:-1 group-title="Intrattenimento",Rai 4 SD
+https://demo.example/rai4/sd.m3u8
+#EXTINF:-1 tvg-id="RaiNews24.it" group-title="Notizie",Rai News 24 HD
+https://demo.example/rainews/hd.m3u8
+#EXTINF:-1 group-title="Notizie",RaiNews24 (backup)
+https://demo.example/rainews/backup.m3u8
+#EXTINF:-1 group-title="Notizie",Sky TG24 HD
+https://demo.example/skytg24/hd.m3u8
+#EXTINF:-1 group-title="Sport",Rai Sport HD
+https://demo.example/raisport/hd.m3u8
+#EXTINF:-1 group-title="Sport",Rai Sport SD
+https://demo.example/raisport/sd.m3u8
+#EXTINF:-1 group-title="Film",Rai Movie HD
+https://demo.example/raimovie/hd.m3u8
+#EXTINF:-1 group-title="Film",Cine34 HD
+https://demo.example/cine34/hd.m3u8
+#EXTINF:-1 group-title="Documentari",Rai Storia
+https://demo.example/raistoria/sd.m3u8
+#EXTINF:-1 group-title="Documentari",Focus HD
+https://demo.example/focus/hd.m3u8
+#EXTINF:-1 group-title="Documentari",DMAX HD
+https://demo.example/dmax/hd.m3u8

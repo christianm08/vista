@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Banner provvisorio per il launcher di Android TV (320×180 dp). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="320dp" android:height="180dp"/>
+            <solid android:color="#07090D"/>
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="96dp" android:height="96dp"
+        android:drawable="@mipmap/ic_launcher"/>
+</layer-list>
