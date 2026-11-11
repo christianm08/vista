@@ -25,7 +25,11 @@ class FocusCard extends StatefulWidget {
     this.selected = false,
     this.autofocus = false,
     this.padding = EdgeInsets.zero,
+    this.outline = true,
   });
+
+  /// Bordo sottile anche senza focus (no per le voci di elenchi e menu).
+  final bool outline;
 
   final Widget child;
   final VoidCallback onTap;
@@ -72,7 +76,8 @@ class _FocusCardState extends State<FocusCard> {
           ? null
           : const {
               SingleActivator(LogicalKeyboardKey.contextMenu): _MenuIntent(),
-              SingleActivator(LogicalKeyboardKey.f10, shift: true): _MenuIntent(),
+              SingleActivator(LogicalKeyboardKey.f10, shift: true):
+                  _MenuIntent(),
             },
       actions: {
         ActivateIntent: CallbackAction<ActivateIntent>(
@@ -104,7 +109,11 @@ class _FocusCardState extends State<FocusCard> {
               color: fill,
               borderRadius: r,
               border: Border.all(
-                color: _focused ? Colors.white : VistaColors.glassBorder,
+                color: _focused
+                    ? Colors.white
+                    : (widget.outline
+                          ? VistaColors.glassBorder
+                          : Colors.transparent),
                 width: _focused ? 3 : 1,
               ),
               boxShadow: _focused

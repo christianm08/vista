@@ -43,7 +43,12 @@ EpgProgramme? programmeAt(List<EpgProgramme> list, DateTime t) {
 
 /// Misure della guida: una TV 1080p ha 960 punti logici di larghezza.
 class GuideMetrics {
-  const GuideMetrics._(this.channelWidth, this.minutes, this.rowHeight, this.logo);
+  const GuideMetrics._(
+    this.channelWidth,
+    this.minutes,
+    this.rowHeight,
+    this.logo,
+  );
 
   factory GuideMetrics.of(double width) => width < 1200
       ? const GuideMetrics._(210, 120, 54, 34)
@@ -56,7 +61,11 @@ class GuideMetrics {
 }
 
 /// Selezione corrente della guida: canale e programma sotto il cursore.
-typedef GuideSelection = ({Channel channel, EpgProgramme? programme, DateTime cursor});
+typedef GuideSelection = ({
+  Channel channel,
+  EpgProgramme? programme,
+  DateTime cursor,
+});
 
 /// Guida TV a griglia, comandata col telecomando come nelle app per TV:
 /// su/giù cambiano canale mantenendo l'orario, sinistra/destra scorrono i
@@ -178,7 +187,9 @@ class _EpgGridState extends State<EpgGrid> {
     if (top - h < pos.pixels) {
       _scroll.jumpTo(math.max(0, top - h));
     } else if (top + 2 * h > pos.pixels + pos.viewportDimension) {
-      _scroll.jumpTo(math.min(pos.maxScrollExtent, top + 2 * h - pos.viewportDimension));
+      _scroll.jumpTo(
+        math.min(pos.maxScrollExtent, top + 2 * h - pos.viewportDimension),
+      );
     }
   }
 
@@ -201,7 +212,9 @@ class _EpgGridState extends State<EpgGrid> {
           : (prev.start.isBefore(now) ? now : prev.start);
     }
     final span = Duration(minutes: _metrics.minutes);
-    while (!_cursor.isBefore(_windowStart.add(span - const Duration(minutes: 30)))) {
+    while (!_cursor.isBefore(
+      _windowStart.add(span - const Duration(minutes: 30)),
+    )) {
       _windowStart = _windowStart.add(const Duration(minutes: 30));
     }
     while (_cursor.isBefore(_windowStart)) {
@@ -215,16 +228,20 @@ class _EpgGridState extends State<EpgGrid> {
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
-    if (e is KeyUpEvent || widget.channels.isEmpty) return KeyEventResult.ignored;
+    if (e is KeyUpEvent || widget.channels.isEmpty) {
+      return KeyEventResult.ignored;
+    }
     final k = e.logicalKey;
     final page = math.max(1, (_visibleRows - 2));
     if (k == LogicalKeyboardKey.arrowDown) {
       _moveRow(1);
     } else if (k == LogicalKeyboardKey.arrowUp) {
       _moveRow(-1);
-    } else if (k == LogicalKeyboardKey.channelDown || k == LogicalKeyboardKey.pageDown) {
+    } else if (k == LogicalKeyboardKey.channelDown ||
+        k == LogicalKeyboardKey.pageDown) {
       _moveRow(page);
-    } else if (k == LogicalKeyboardKey.channelUp || k == LogicalKeyboardKey.pageUp) {
+    } else if (k == LogicalKeyboardKey.channelUp ||
+        k == LogicalKeyboardKey.pageUp) {
       _moveRow(-page);
     } else if (k == LogicalKeyboardKey.arrowRight) {
       _moveTime(1);
@@ -248,8 +265,10 @@ class _EpgGridState extends State<EpgGrid> {
 
   void _tapRow(int row, DateTime? at) {
     widget.focusNode.requestFocus();
-    if (row == _row && (at == null || programmeAt(_programmes(_channel), at) ==
-        programmeAt(_programmes(_channel), _cursor))) {
+    if (row == _row &&
+        (at == null ||
+            programmeAt(_programmes(_channel), at) ==
+                programmeAt(_programmes(_channel), _cursor))) {
       widget.onPlay(_channel);
       return;
     }
@@ -267,47 +286,52 @@ class _EpgGridState extends State<EpgGrid> {
     return Focus(
       focusNode: widget.focusNode,
       onKeyEvent: _onKey,
-      child: LayoutBuilder(builder: (context, box) {
-        _metrics = GuideMetrics.of(box.maxWidth);
-        final timelineWidth = box.maxWidth - _metrics.channelWidth;
-        final px = timelineWidth / _metrics.minutes;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _Ruler(
-              start: _windowStart,
-              minutes: _metrics.minutes,
-              now: widget.now,
-              channelWidth: _metrics.channelWidth,
-              pxPerMinute: px,
-            ),
-            Expanded(
-              child: LayoutBuilder(builder: (context, rows) {
-                _visibleRows = (rows.maxHeight / _metrics.rowHeight).floor();
-                return ListView.builder(
-                  controller: _scroll,
-                  itemExtent: _metrics.rowHeight,
-                  itemCount: widget.channels.length,
-                  padding: EdgeInsets.zero,
-                  itemBuilder: (_, i) => _Row(
-                    channel: widget.channels[i],
-                    programmes: _programmes(widget.channels[i]),
-                    metrics: _metrics,
-                    windowStart: _windowStart,
-                    pxPerMinute: px,
-                    now: widget.now,
-                    selected: i == _row,
-                    focused: _focused,
-                    cursor: _cursor,
-                    onTap: (at) => _tapRow(i, at),
-                    onLongPress: () => widget.onEdit(widget.channels[i]),
-                  ),
-                );
-              }),
-            ),
-          ],
-        );
-      }),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          _metrics = GuideMetrics.of(box.maxWidth);
+          final timelineWidth = box.maxWidth - _metrics.channelWidth;
+          final px = timelineWidth / _metrics.minutes;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Ruler(
+                start: _windowStart,
+                minutes: _metrics.minutes,
+                now: widget.now,
+                channelWidth: _metrics.channelWidth,
+                pxPerMinute: px,
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, rows) {
+                    _visibleRows = (rows.maxHeight / _metrics.rowHeight)
+                        .floor();
+                    return ListView.builder(
+                      controller: _scroll,
+                      itemExtent: _metrics.rowHeight,
+                      itemCount: widget.channels.length,
+                      padding: EdgeInsets.zero,
+                      itemBuilder: (_, i) => _Row(
+                        channel: widget.channels[i],
+                        programmes: _programmes(widget.channels[i]),
+                        metrics: _metrics,
+                        windowStart: _windowStart,
+                        pxPerMinute: px,
+                        now: widget.now,
+                        selected: i == _row,
+                        focused: _focused,
+                        cursor: _cursor,
+                        onTap: (at) => _tapRow(i, at),
+                        onLongPress: () => widget.onEdit(widget.channels[i]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -344,7 +368,9 @@ class _Ruler extends StatelessWidget {
               child: Text(
                 today ? 'Oggi' : '${days[start.weekday - 1]} ${start.day}',
                 style: t.labelLarge?.copyWith(
-                    color: VistaColors.accent, fontWeight: FontWeight.w800),
+                  color: VistaColors.accent,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ),
@@ -358,10 +384,18 @@ class _Ruler extends StatelessWidget {
                     top: 4,
                     child: Row(
                       children: [
-                        Container(width: 1, height: 14, color: VistaColors.glassBorder),
+                        Container(
+                          width: 1,
+                          height: 14,
+                          color: VistaColors.glassBorder,
+                        ),
                         const SizedBox(width: 6),
-                        Text(hhmm(start.add(Duration(minutes: m))),
-                            style: t.labelMedium?.copyWith(color: VistaColors.textSecondary)),
+                        Text(
+                          hhmm(start.add(Duration(minutes: m))),
+                          style: t.labelMedium?.copyWith(
+                            color: VistaColors.textSecondary,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -370,16 +404,22 @@ class _Ruler extends StatelessWidget {
                     left: math.max(0, nowX - 22),
                     bottom: 0,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: VistaColors.accent,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text(hhmm(now),
-                          style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: VistaColors.onPrimary)),
+                      child: Text(
+                        hhmm(now),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: VistaColors.onPrimary,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -428,7 +468,8 @@ class _Row extends StatelessWidget {
         if (p.stop.isAfter(windowStart) && p.start.isBefore(end)) p,
     ];
     final current = selected ? programmeAt(programmes, cursor) : null;
-    double x(DateTime d) => d.difference(windowStart).inSeconds / 60 * pxPerMinute;
+    double x(DateTime d) =>
+        d.difference(windowStart).inSeconds / 60 * pxPerMinute;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
@@ -445,7 +486,9 @@ class _Row extends StatelessWidget {
               decoration: BoxDecoration(
                 color: active
                     ? VistaColors.glassActive
-                    : (selected ? VistaColors.glassHigh : const Color(0x0DFFFFFF)),
+                    : (selected
+                          ? VistaColors.glassHigh
+                          : const Color(0x0DFFFFFF)),
                 borderRadius: BorderRadius.circular(10),
                 border: Border(
                   left: BorderSide(
@@ -458,19 +501,25 @@ class _Row extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: 34,
-                    child: Text('${channel.number}',
-                        style: t.labelLarge?.copyWith(
-                            color: active ? Colors.white : VistaColors.textTertiary,
-                            fontWeight: FontWeight.w700)),
+                    child: Text(
+                      '${channel.number}',
+                      style: t.labelLarge?.copyWith(
+                        color: active ? Colors.white : VistaColors.textTertiary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                   ChannelLogo(channel: channel, size: metrics.logo),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(channel.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.bodyMedium?.copyWith(
-                            fontWeight: active ? FontWeight.w800 : FontWeight.w600)),
+                    child: Text(
+                      channel.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodyMedium?.copyWith(
+                        fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -478,49 +527,53 @@ class _Row extends StatelessWidget {
           ),
           // Programmi
           Expanded(
-            child: LayoutBuilder(builder: (context, c) {
-              if (visible.isEmpty) {
-                return _Cell(
-                  title: 'Nessuna informazione',
-                  selected: active,
-                  onAir: false,
-                  progress: 0,
-                  muted: true,
-                  onTap: () => onTap(null),
+            child: LayoutBuilder(
+              builder: (context, c) {
+                if (visible.isEmpty) {
+                  return _Cell(
+                    title: 'Nessuna informazione',
+                    selected: active,
+                    onAir: false,
+                    progress: 0,
+                    muted: true,
+                    onTap: () => onTap(null),
+                  );
+                }
+                return Stack(
+                  clipBehavior: Clip.hardEdge,
+                  children: [
+                    for (final p in visible)
+                      () {
+                        final left = math.max(0.0, x(p.start));
+                        final right = math.min(c.maxWidth, x(p.stop));
+                        return Positioned(
+                          left: left,
+                          width: math.max(0.0, right - left - 3),
+                          top: 0,
+                          bottom: 0,
+                          child: _Cell(
+                            title: p.title,
+                            selected: active && identical(p, current),
+                            highlighted:
+                                selected && !focused && identical(p, current),
+                            onAir: p.isOnAt(now),
+                            progress: p.progressAt(now),
+                            onTap: () =>
+                                onTap(p.start.isBefore(now) ? now : p.start),
+                          ),
+                        );
+                      }(),
+                    Positioned(
+                      left: x(now),
+                      top: 0,
+                      bottom: 0,
+                      width: 2,
+                      child: const ColoredBox(color: VistaColors.accent),
+                    ),
+                  ],
                 );
-              }
-              return Stack(
-                clipBehavior: Clip.hardEdge,
-                children: [
-                  for (final p in visible)
-                    () {
-                      final left = math.max(0.0, x(p.start));
-                      final right = math.min(c.maxWidth, x(p.stop));
-                      return Positioned(
-                        left: left,
-                        width: math.max(0.0, right - left - 3),
-                        top: 0,
-                        bottom: 0,
-                        child: _Cell(
-                          title: p.title,
-                          selected: active && identical(p, current),
-                          highlighted: selected && !focused && identical(p, current),
-                          onAir: p.isOnAt(now),
-                          progress: p.progressAt(now),
-                          onTap: () => onTap(p.start.isBefore(now) ? now : p.start),
-                        ),
-                      );
-                    }(),
-                  Positioned(
-                    left: x(now),
-                    top: 0,
-                    bottom: 0,
-                    width: 2,
-                    child: const ColoredBox(color: VistaColors.accent),
-                  ),
-                ],
-              );
-            }),
+              },
+            ),
           ),
         ],
       ),
@@ -553,13 +606,16 @@ class _Cell extends StatelessWidget {
     final fill = selected
         ? Colors.white
         : highlighted
-            ? VistaColors.glassActive
-            : (onAir ? const Color(0x1FFFFFFF) : const Color(0x0DFFFFFF));
+        ? VistaColors.glassActive
+        : (onAir ? const Color(0x1FFFFFFF) : const Color(0x0DFFFFFF));
     return GestureDetector(
       onTap: onTap,
       child: Container(
         clipBehavior: Clip.hardEdge,
-        decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(10),
+        ),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -579,7 +635,9 @@ class _Cell extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t.bodyMedium?.copyWith(
-                    fontWeight: selected || onAir ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: selected || onAir
+                        ? FontWeight.w700
+                        : FontWeight.w500,
                     color: selected
                         ? VistaColors.onPrimary
                         : (muted ? VistaColors.textTertiary : Colors.white),
@@ -641,35 +699,50 @@ class GuideHeader extends StatelessWidget {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text((category ?? 'Tutti i canali').toUpperCase(),
-                          style: t.labelMedium?.copyWith(
-                              color: VistaColors.accent,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1)),
+                      Text(
+                        (category ?? 'Tutti i canali').toUpperCase(),
+                        style: t.labelMedium?.copyWith(
+                          color: VistaColors.accent,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Row(
                         children: [
                           ChannelLogo(channel: s.channel, size: 30),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text('${s.channel.number}  ${s.channel.name}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: t.titleSmall?.copyWith(color: VistaColors.textSecondary)),
+                            child: Text(
+                              '${s.channel.number}  ${s.channel.name}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: t.titleSmall?.copyWith(
+                                color: VistaColors.textSecondary,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(p?.title ?? 'Nessuna informazione sul programma',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+                      Text(
+                        p?.title ?? 'Nessuna informazione sul programma',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       if (p != null)
                         Row(
                           children: [
-                            Text('${hhmm(p.start)} – ${hhmm(p.stop)}',
-                                style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                            Text(
+                              '${hhmm(p.start)} – ${hhmm(p.stop)}',
+                              style: t.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             const SizedBox(width: 10),
                             if (p.isOnAt(now)) ...[
                               SizedBox(
@@ -687,27 +760,39 @@ class GuideHeader extends StatelessWidget {
                             ],
                             Flexible(
                               child: Text(
-                                [remaining(p, now), if (p.category.isNotEmpty) p.category]
-                                    .join(' · '),
+                                [
+                                  remaining(p, now),
+                                  if (p.category.isNotEmpty) p.category,
+                                ].join(' · '),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
+                                style: t.bodySmall?.copyWith(
+                                  color: VistaColors.textSecondary,
+                                ),
                               ),
                             ),
                           ],
                         )
                       else if (status.isNotEmpty)
-                        Text(status,
-                            style: t.bodySmall?.copyWith(color: VistaColors.textTertiary)),
+                        Text(
+                          status,
+                          style: t.bodySmall?.copyWith(
+                            color: VistaColors.textTertiary,
+                          ),
+                        ),
                       const SizedBox(height: 8),
                       if (p != null)
                         Expanded(
                           child: Text(
-                            p.description.isNotEmpty ? p.description : p.subtitle,
+                            p.description.isNotEmpty
+                                ? p.description
+                                : p.subtitle,
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                             style: t.bodyMedium?.copyWith(
-                                color: VistaColors.textSecondary, height: 1.35),
+                              color: VistaColors.textSecondary,
+                              height: 1.35,
+                            ),
                           ),
                         ),
                     ],

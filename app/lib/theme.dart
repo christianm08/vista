@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// Colori dello stile "B · Vetro".
@@ -22,10 +25,162 @@ abstract final class VistaColors {
   static const textTertiary = Color(0x94FFFFFF); // 58%
 }
 
+/// Raggi: più contenuti del primo prototipo, per un aspetto più "da
+/// prodotto" (stile Plex / Apple TV) e meno "da giocattolo".
 abstract final class VistaRadius {
-  static const hero = 34.0;
-  static const card = 28.0;
-  static const poster = 20.0;
+  static const hero = 22.0;
+  static const card = 16.0;
+  static const poster = 12.0;
+}
+
+/// Che dispositivo è: decide forma della navigazione e dimensioni.
+abstract final class Device {
+  static const _channel = MethodChannel('vista/device');
+
+  /// Android TV / Google TV (telecomando, niente touch).
+  static bool isTv = false;
+
+  static bool get isDesktop =>
+      !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+
+  static Future<void> init() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      isTv = await _channel.invokeMethod<bool>('isTv') ?? false;
+    } on PlatformException {
+      isTv = false;
+    } on MissingPluginException {
+      isTv = false;
+    }
+  }
+}
+
+/// Misure che dipendono da dispositivo e larghezza della finestra.
+class VistaLayout {
+  VistaLayout._(this.width, this.height);
+
+  factory VistaLayout.of(BuildContext context) {
+    final s = MediaQuery.sizeOf(context);
+    return VistaLayout._(s.width, s.height);
+  }
+
+  final double width;
+  final double height;
+
+  /// Telefono (o finestra stretta): barra in basso, una colonna.
+  bool get compact => width < 700 && !Device.isTv;
+
+  /// Interfaccia da telecomando (Android TV).
+  bool get tv => Device.isTv;
+
+  /// Margine laterale del contenuto.
+  double get gutter => compact ? 16 : (tv ? 28 : 32);
+
+  /// Larghezza delle locandine 2:3 nelle righe orizzontali.
+  double get posterWidth {
+    if (compact) return 112;
+    if (tv) return 124;
+    return width >= 1600 ? 168 : 148;
+  }
+
+  /// Larghezza delle schede 16:9 (continua a guardare, canali).
+  double get wideCardWidth {
+    if (compact) return 220;
+    if (tv) return 232;
+    return width >= 1600 ? 300 : 264;
+  }
+}
+
+/// Scorrimento col trascinamento anche col mouse (righe orizzontali su PC).
+class VistaScrollBehavior extends MaterialScrollBehavior {
+  const VistaScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+  };
+}
+
+/// Titolo di una riga o sezione: piccolo e spaziato, il contenuto domina.
+class SectionTitle extends StatelessWidget {
+  const SectionTitle(this.text, {super.key, this.trailing});
+  final String text;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: t.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+/// Sfocatura per gli sfondi ricavati dalle locandine.
+ImageFilter blurFilter(double sigma) =>
+    ImageFilter.blur(sigmaX: sigma, sigmaY: sigma);
+
+/// Metadati su una riga separati da "·" (anno · genere · durata).
+String metaLine(Iterable<String?> parts) =>
+    parts.where((p) => p != null && p.trim().isNotEmpty).join('  ·  ');
+
+/// Durata leggibile: "1 h 45 min", "45 min".
+String formatDuration(Duration d) {
+  final h = d.inHours;
+  final m = d.inMinutes.remainder(60);
+  if (h == 0) return '$m min';
+  return m == 0 ? '$h h' : '$h h $m min';
+}
+
+/// Immagine di rete con segnaposto e ridimensionamento in decodifica
+/// (le locandine originali pesano anche 1-2 MB: sui box TV sono troppo).
+class NetImage extends StatelessWidget {
+  const NetImage(
+    this.url, {
+    super.key,
+    this.fit = BoxFit.cover,
+    this.cacheWidth,
+    this.placeholder,
+  });
+
+  final String url;
+  final BoxFit fit;
+  final int? cacheWidth;
+  final Widget? placeholder;
+
+  @override
+  Widget build(BuildContext context) {
+    final ph = placeholder ?? const ColoredBox(color: Color(0xFF151A22));
+    if (url.isEmpty ||
+        !(url.startsWith('http://') || url.startsWith('https://'))) {
+      return ph;
+    }
+    return Image.network(
+      url,
+      fit: fit,
+      cacheWidth: cacheWidth,
+      gaplessPlayback: true,
+      errorBuilder: (_, _, _) => ph,
+      frameBuilder: (_, child, frame, sync) =>
+          sync || frame != null ? child : ph,
+    );
+  }
 }
 
 ThemeData buildVistaTheme() {
@@ -44,7 +199,12 @@ ThemeData buildVistaTheme() {
   // Plus Jakarta Sans 400–800. Chiamare GoogleFonts per ogni peso ne avvia il
   // caricamento (poi resta in cache); il TextTheme usa solo la famiglia.
   final family = GoogleFonts.plusJakartaSans().fontFamily;
-  for (final w in [FontWeight.w500, FontWeight.w600, FontWeight.w700, FontWeight.w800]) {
+  for (final w in [
+    FontWeight.w500,
+    FontWeight.w600,
+    FontWeight.w700,
+    FontWeight.w800,
+  ]) {
     GoogleFonts.plusJakartaSans(fontWeight: w);
   }
   final text = base.textTheme.apply(
@@ -54,38 +214,51 @@ ThemeData buildVistaTheme() {
   );
   return base.copyWith(
     textTheme: text,
-    progressIndicatorTheme:
-        const ProgressIndicatorThemeData(color: VistaColors.accent),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: VistaColors.accent,
+    ),
     // Col telecomando il focus deve vedersi sempre: bordo spesso e, sul
     // pulsante bianco, alone color pesca.
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: VistaColors.onPrimary,
-        disabledBackgroundColor: VistaColors.glassActive,
-        shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-        textStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-      ).copyWith(
-        side: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.focused)
-            ? const BorderSide(color: VistaColors.accent, width: 4)
-            : BorderSide.none),
-        overlayColor: WidgetStateProperty.resolveWith((s) =>
-            s.contains(WidgetState.focused) ? const Color(0x22E08A55) : null),
-      ),
+      style:
+          FilledButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: VistaColors.onPrimary,
+            disabledBackgroundColor: VistaColors.glassActive,
+            shape: const StadiumBorder(),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+            textStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+          ).copyWith(
+            side: WidgetStateProperty.resolveWith(
+              (s) => s.contains(WidgetState.focused)
+                  ? const BorderSide(color: VistaColors.accent, width: 4)
+                  : BorderSide.none,
+            ),
+            overlayColor: WidgetStateProperty.resolveWith(
+              (s) => s.contains(WidgetState.focused)
+                  ? const Color(0x22E08A55)
+                  : null,
+            ),
+          ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-      ).copyWith(
-        side: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.focused)
-            ? const BorderSide(color: Colors.white, width: 3)
-            : const BorderSide(color: VistaColors.glassBorder)),
-        backgroundColor: WidgetStateProperty.resolveWith((s) =>
-            s.contains(WidgetState.focused) ? VistaColors.glassActive : null),
-      ),
+      style:
+          OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            shape: const StadiumBorder(),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+          ).copyWith(
+            side: WidgetStateProperty.resolveWith(
+              (s) => s.contains(WidgetState.focused)
+                  ? const BorderSide(color: Colors.white, width: 3)
+                  : const BorderSide(color: VistaColors.glassBorder),
+            ),
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (s) => s.contains(WidgetState.focused)
+                  ? VistaColors.glassActive
+                  : null,
+            ),
+          ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -130,10 +303,12 @@ class VistaBackground extends StatelessWidget {
             child: ImageFiltered(
               imageFilter: ImageFilter.blur(sigmaX: 85, sigmaY: 85),
               child: const Stack(
+                // Aloni discreti: danno profondità senza competere con le
+                // locandine.
                 children: [
-                  _Halo(VistaColors.teal, Alignment(-1.1, -1.0), 0.55),
-                  _Halo(VistaColors.peach, Alignment(1.2, -0.3), 0.40),
-                  _Halo(VistaColors.violet, Alignment(-0.4, 1.2), 0.50),
+                  _Halo(VistaColors.teal, Alignment(-1.1, -1.1), 0.32),
+                  _Halo(VistaColors.peach, Alignment(1.25, -0.6), 0.18),
+                  _Halo(VistaColors.violet, Alignment(-0.3, 1.3), 0.28),
                 ],
               ),
             ),
@@ -230,8 +405,10 @@ class _VistaClockState extends State<VistaClock> {
         final t = DateTime.now();
         return Text(
           '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
-          style: widget.style ??
-              Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          style:
+              widget.style ??
+              Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
         );
       },
     );

@@ -192,6 +192,8 @@ class Movie {
     this.year,
     this.rating = '',
     this.plot = '',
+    this.added,
+    this.genre = '',
   });
 
   final String id;
@@ -202,6 +204,44 @@ class Movie {
   final int? year;
   final String rating;
   final String plot;
+
+  /// Quando il titolo è stato aggiunto alla fonte (Xtream `added`).
+  final DateTime? added;
+  final String genre;
+}
+
+/// Informazioni complete di un film o di una serie, chieste all'apertura
+/// della scheda (Xtream `get_vod_info` / `get_series_info`).
+class TitleDetails {
+  const TitleDetails({
+    this.plot = '',
+    this.genre = '',
+    this.cast = '',
+    this.director = '',
+    this.backdrop = '',
+    this.poster = '',
+    this.duration,
+    this.releaseDate = '',
+    this.rating = '',
+    this.trailer = '',
+  });
+
+  final String plot;
+  final String genre;
+  final String cast;
+  final String director;
+
+  /// Immagine orizzontale di sfondo.
+  final String backdrop;
+  final String poster;
+  final Duration? duration;
+  final String releaseDate;
+  final String rating;
+
+  /// ID YouTube del trailer, se il pannello lo fornisce.
+  final String trailer;
+
+  static const empty = TitleDetails();
 }
 
 /// Un episodio di una serie.
@@ -243,6 +283,9 @@ class Series {
     this.rating = '',
     this.plot = '',
     this.episodes = const [],
+    this.added,
+    this.genre = '',
+    this.backdrop = '',
   });
 
   final String id;
@@ -254,6 +297,11 @@ class Series {
   final String plot;
   final List<Episode> episodes;
 
+  /// Ultimo aggiornamento sulla fonte (Xtream `last_modified`).
+  final DateTime? added;
+  final String genre;
+  final String backdrop;
+
   Series withEpisodes(List<Episode> eps) => Series(
         id: id,
         title: title,
@@ -263,6 +311,9 @@ class Series {
         rating: rating,
         plot: plot,
         episodes: eps,
+        added: added,
+        genre: genre,
+        backdrop: backdrop,
       );
 }
 

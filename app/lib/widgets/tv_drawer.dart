@@ -33,6 +33,7 @@ class TvDrawer extends StatefulWidget {
     required this.actions,
     required this.onClose,
     this.footer = '',
+    this.title = 'Vista',
   });
 
   final bool open;
@@ -41,6 +42,7 @@ class TvDrawer extends StatefulWidget {
   final List<DrawerEntry> actions;
   final VoidCallback onClose;
   final String footer;
+  final String title;
 
   @override
   State<TvDrawer> createState() => _TvDrawerState();
@@ -60,8 +62,12 @@ class _TvDrawerState extends State<TvDrawer> {
         if (!mounted) return;
         final i = widget.groups.indexWhere((g) => g.selected);
         if (i > 0 && _scroll.hasClients) {
-          _scroll.jumpTo((i * _groupHeight - 120)
-              .clamp(0.0, _scroll.position.maxScrollExtent));
+          _scroll.jumpTo(
+            (i * _groupHeight - 120).clamp(
+              0.0,
+              _scroll.position.maxScrollExtent,
+            ),
+          );
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _target.context != null) _target.requestFocus();
@@ -121,7 +127,9 @@ class _TvDrawerState extends State<TvDrawer> {
                   child: DecoratedBox(
                     decoration: const BoxDecoration(
                       color: Color(0xF00B0E13),
-                      border: Border(right: BorderSide(color: VistaColors.glassBorder)),
+                      border: Border(
+                        right: BorderSide(color: VistaColors.glassBorder),
+                      ),
                     ),
                     child: SafeArea(
                       right: false,
@@ -134,29 +142,42 @@ class _TvDrawerState extends State<TvDrawer> {
                               children: [
                                 Padding(
                                   padding: const EdgeInsets.only(left: 6),
-                                  child: Text('Vista',
-                                      style: t.headlineSmall
-                                          ?.copyWith(fontWeight: FontWeight.w800)),
+                                  child: Text(
+                                    widget.title,
+                                    style: t.headlineSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
                                 ),
                                 const Spacer(),
                                 VistaClock(
-                                    style: t.titleMedium?.copyWith(
-                                        color: VistaColors.textSecondary,
-                                        fontWeight: FontWeight.w700)),
+                                  style: t.titleMedium?.copyWith(
+                                    color: VistaColors.textSecondary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 10),
                             for (final s in widget.sections)
-                              _entry(s, focusNode: !targetIsGroup && s.selected ? _target : null),
+                              _entry(
+                                s,
+                                focusNode: !targetIsGroup && s.selected
+                                    ? _target
+                                    : null,
+                              ),
                             if (widget.groups.isNotEmpty) ...[
                               const SizedBox(height: 10),
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-                                child: Text('CATEGORIE',
-                                    style: t.labelSmall?.copyWith(
-                                        color: VistaColors.textTertiary,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1.2)),
+                                child: Text(
+                                  'CATEGORIE',
+                                  style: t.labelSmall?.copyWith(
+                                    color: VistaColors.textTertiary,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
                               ),
                               Expanded(
                                 child: ListView.builder(
@@ -165,33 +186,45 @@ class _TvDrawerState extends State<TvDrawer> {
                                   itemCount: widget.groups.length,
                                   itemBuilder: (_, i) => _entry(
                                     widget.groups[i],
-                                    focusNode: widget.groups[i].selected ? _target : null,
+                                    focusNode: widget.groups[i].selected
+                                        ? _target
+                                        : null,
                                     dense: true,
                                   ),
                                 ),
                               ),
                             ] else
                               const Spacer(),
-                            const Divider(color: VistaColors.glassBorder, height: 16),
-                            Row(
-                              children: [
-                                for (final a in widget.actions)
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                                      child: _action(a),
+                            if (widget.actions.isNotEmpty) ...[
+                              const Divider(
+                                color: VistaColors.glassBorder,
+                                height: 16,
+                              ),
+                              Row(
+                                children: [
+                                  for (final a in widget.actions)
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: _action(a),
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                             if (widget.footer.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-                                child: Text(widget.footer,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: t.bodySmall
-                                        ?.copyWith(color: VistaColors.textTertiary)),
+                                child: Text(
+                                  widget.footer,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: t.bodySmall?.copyWith(
+                                    color: VistaColors.textTertiary,
+                                  ),
+                                ),
                               ),
                           ],
                         ),
@@ -220,10 +253,15 @@ class _TvDrawerState extends State<TvDrawer> {
         children: [
           Icon(e.icon, size: 20, color: VistaColors.textSecondary),
           const SizedBox(height: 4),
-          Text(e.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: VistaColors.textSecondary)),
+          Text(
+            e.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              color: VistaColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );
@@ -239,6 +277,7 @@ class _TvDrawerState extends State<TvDrawer> {
         focusScale: 1.02,
         selected: e.selected,
         fill: Colors.transparent,
+        outline: false,
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: dense ? 9 : 10),
         onTap: e.onTap,
         child: Row(
@@ -248,18 +287,26 @@ class _TvDrawerState extends State<TvDrawer> {
               const SizedBox(width: 12),
             ],
             Expanded(
-              child: Text(e.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontWeight: dense ? FontWeight.w600 : FontWeight.w800,
-                      fontSize: dense ? 14 : 16)),
+              child: Text(
+                e.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: dense ? FontWeight.w600 : FontWeight.w800,
+                  fontSize: dense ? 14 : 16,
+                ),
+              ),
             ),
             if (e.trailing.isNotEmpty)
-              Text(e.trailing,
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: e.selected ? VistaColors.onPrimary : VistaColors.textTertiary)),
+              Text(
+                e.trailing,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: e.selected
+                      ? VistaColors.onPrimary
+                      : VistaColors.textTertiary,
+                ),
+              ),
           ],
         ),
       ),

@@ -22,7 +22,12 @@ bool _matches(Channel c, String q) {
 
 EdgeInsets _pagePadding(BuildContext context) {
   final wide = MediaQuery.sizeOf(context).width >= 900;
-  return EdgeInsets.fromLTRB(wide ? 48 : 16, wide ? 32 : 16, wide ? 48 : 16, 40);
+  return EdgeInsets.fromLTRB(
+    wide ? 48 : 16,
+    wide ? 32 : 16,
+    wide ? 48 : 16,
+    40,
+  );
 }
 
 Widget _title(BuildContext context, String text, [String? subtitle]) {
@@ -30,10 +35,16 @@ Widget _title(BuildContext context, String text, [String? subtitle]) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(text, style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+      Text(
+        text,
+        style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+      ),
       if (subtitle != null) ...[
         const SizedBox(height: 6),
-        Text(subtitle, style: t.bodyMedium?.copyWith(color: VistaColors.textSecondary)),
+        Text(
+          subtitle,
+          style: t.bodyMedium?.copyWith(color: VistaColors.textSecondary),
+        ),
       ],
     ],
   );
@@ -76,8 +87,11 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
           valueListenable: store.library,
           builder: (context, _, _) {
             final all = _channelsOf(store);
-            final shown = all.where((c) => _matches(c, _search.text.trim())).toList();
-            final edited = store.prefs.overrides.length + store.prefs.merges.length;
+            final shown = all
+                .where((c) => _matches(c, _search.text.trim()))
+                .toList();
+            final edited =
+                store.prefs.overrides.length + store.prefs.merges.length;
             return CustomScrollView(
               slivers: [
                 SliverPadding(
@@ -94,7 +108,10 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                               '${edited > 0 ? ' · $edited modifiche' : ''}.',
                         ),
                         const SizedBox(height: 16),
-                        TvTextField(controller: _search, hint: 'Cerca un canale'),
+                        TvTextField(
+                          controller: _search,
+                          hint: 'Cerca un canale',
+                        ),
                       ],
                     ),
                   ),
@@ -108,10 +125,14 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                       channel: shown[i],
                       mergedCount: store.prefs.mergedInto(shown[i].key).length,
                       autofocus: i == 0,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) =>
-                            ChannelEditScreen(store: store, channelKey: shown[i].key),
-                      )),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ChannelEditScreen(
+                            store: store,
+                            channelKey: shown[i].key,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -144,7 +165,8 @@ class _ChannelRow extends StatelessWidget {
     final notes = [
       if (c.renamed) 'era "${displayName(c.key)}"',
       c.sourceNames.length == 1 ? '1 voce' : '${c.sourceNames.length} voci',
-      if (mergedCount > 0) mergedCount == 1 ? '1 canale unito' : '$mergedCount canali uniti',
+      if (mergedCount > 0)
+        mergedCount == 1 ? '1 canale unito' : '$mergedCount canali uniti',
       c.group,
     ];
     return FocusCard(
@@ -160,14 +182,18 @@ class _ChannelRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(c.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                Text(notes.join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.bodySmall?.copyWith(color: VistaColors.textTertiary)),
+                Text(
+                  c.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  notes.join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+                ),
               ],
             ),
           ),
@@ -193,7 +219,11 @@ class _ChannelRow extends StatelessWidget {
 
 /// Nome, icona e raggruppamento di un canale.
 class ChannelEditScreen extends StatefulWidget {
-  const ChannelEditScreen({super.key, required this.store, required this.channelKey});
+  const ChannelEditScreen({
+    super.key,
+    required this.store,
+    required this.channelKey,
+  });
 
   final SourceStore store;
   final String channelKey;
@@ -204,7 +234,9 @@ class ChannelEditScreen extends StatefulWidget {
 
 class _ChannelEditScreenState extends State<ChannelEditScreen> {
   late final _name = TextEditingController(text: _channel?.name ?? '');
-  late final _logoSearch = TextEditingController(text: displayName(widget.channelKey));
+  late final _logoSearch = TextEditingController(
+    text: displayName(widget.channelKey),
+  );
   final _logoUrl = TextEditingController();
   late String _query = _logoSearch.text;
   bool _busy = false;
@@ -226,7 +258,10 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
     super.dispose();
   }
 
-  Future<void> _save(ChannelPrefs Function(ChannelPrefs) change, String done) async {
+  Future<void> _save(
+    ChannelPrefs Function(ChannelPrefs) change,
+    String done,
+  ) async {
     setState(() => _busy = true);
     try {
       await _store.updatePrefs(change(_store.prefs));
@@ -242,24 +277,32 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 2)));
+      ..showSnackBar(
+        SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
+      );
   }
 
   void _rename() {
     final name = _name.text.trim();
     final original = displayName(widget.channelKey);
-    _save((p) => p.rename(widget.channelKey, name == original ? '' : name),
-        'Nome salvato.');
+    _save(
+      (p) => p.rename(widget.channelKey, name == original ? '' : name),
+      'Nome salvato.',
+    );
   }
 
   void _resetName() {
     _name.text = displayName(widget.channelKey);
-    _save((p) => p.rename(widget.channelKey, ''), 'Nome originale ripristinato.');
+    _save(
+      (p) => p.rename(widget.channelKey, ''),
+      'Nome originale ripristinato.',
+    );
   }
 
-  void _setLogo(String url) =>
-      _save((p) => p.setLogo(widget.channelKey, url),
-          url.isEmpty ? 'Torna il logo automatico.' : 'Icona aggiornata.');
+  void _setLogo(String url) => _save(
+    (p) => p.setLogo(widget.channelKey, url),
+    url.isEmpty ? 'Torna il logo automatico.' : 'Icona aggiornata.',
+  );
 
   void _useLogoUrl() {
     final uri = Uri.tryParse(_logoUrl.text.trim());
@@ -271,12 +314,17 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
   }
 
   Future<void> _addChannel() async {
-    final picked = await Navigator.of(context).push<String>(MaterialPageRoute(
-      builder: (_) => _ChannelPickerScreen(store: _store, exclude: widget.channelKey),
-    ));
+    final picked = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) =>
+            _ChannelPickerScreen(store: _store, exclude: widget.channelKey),
+      ),
+    );
     if (picked == null) return;
-    await _save((p) => p.merge(picked, widget.channelKey),
-        '${displayName(picked)} unito a questo canale.');
+    await _save(
+      (p) => p.merge(picked, widget.channelKey),
+      '${displayName(picked)} unito a questo canale.',
+    );
   }
 
   @override
@@ -292,7 +340,9 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Questo canale non c\'è più: forse è stato unito a un altro.'),
+                    const Text(
+                      'Questo canale non c\'è più: forse è stato unito a un altro.',
+                    ),
                     const SizedBox(height: 16),
                     FilledButton(
                       autofocus: true,
@@ -316,7 +366,11 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
                   ],
                 ),
                 if (_busy)
-                  const Positioned(top: 16, right: 16, child: CircularProgressIndicator()),
+                  const Positioned(
+                    top: 16,
+                    right: 16,
+                    child: CircularProgressIndicator(),
+                  ),
               ],
             );
           },
@@ -335,11 +389,16 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(c.name, style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+              Text(
+                c.name,
+                style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
               Text(
                 [
                   if (c.renamed) 'nome originale "${displayName(c.key)}"',
-                  c.streams.length == 1 ? '1 flusso' : '${c.streams.length} flussi',
+                  c.streams.length == 1
+                      ? '1 flusso'
+                      : '${c.streams.length} flussi',
                   c.group,
                 ].join(' · '),
                 style: t.bodyMedium?.copyWith(color: VistaColors.textSecondary),
@@ -360,7 +419,10 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              title,
+              style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: 12),
             ...children,
           ],
@@ -370,51 +432,54 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
   }
 
   List<Widget> _visibilitySection(Channel c) => [
-        Text(
-          c.hidden
-              ? 'Nascosto: non compare in Live né nella guida.'
-              : 'Visibile in Live e nella guida.',
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: VistaColors.textSecondary),
-        ),
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            autofocus: true,
-            onPressed: _busy
-                ? null
-                : () => _save((p) => p.setHidden(widget.channelKey, !c.hidden),
-                    c.hidden ? 'Canale di nuovo visibile.' : 'Canale nascosto.'),
-            child: Text(c.hidden ? 'Mostra il canale' : 'Nascondi il canale'),
-          ),
-        ),
-      ];
+    Text(
+      c.hidden
+          ? 'Nascosto: non compare in Live né nella guida.'
+          : 'Visibile in Live e nella guida.',
+      style: Theme.of(context).textTheme.bodySmall
+          ?.copyWith(color: VistaColors.textSecondary),
+    ),
+    const SizedBox(height: 12),
+    Align(
+      alignment: Alignment.centerLeft,
+      child: FilledButton(
+        autofocus: true,
+        onPressed: _busy
+            ? null
+            : () => _save(
+                (p) => p.setHidden(widget.channelKey, !c.hidden),
+                c.hidden ? 'Canale di nuovo visibile.' : 'Canale nascosto.',
+              ),
+        child: Text(c.hidden ? 'Mostra il canale' : 'Nascondi il canale'),
+      ),
+    ),
+  ];
 
   List<Widget> _nameSection(Channel c) => [
-        TvTextField(
-          controller: _name,
-          enabled: !_busy,
-          hint: 'Nome del canale',
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => _rename(),
+    TvTextField(
+      controller: _name,
+      enabled: !_busy,
+      hint: 'Nome del canale',
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _rename(),
+    ),
+    const SizedBox(height: 12),
+    Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        FilledButton(
+          onPressed: _busy ? null : _rename,
+          child: const Text('Salva nome'),
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            FilledButton(onPressed: _busy ? null : _rename, child: const Text('Salva nome')),
-            if (c.renamed)
-              OutlinedButton(
-                onPressed: _busy ? null : _resetName,
-                child: const Text('Ripristina il nome originale'),
-              ),
-          ],
-        ),
-      ];
+        if (c.renamed)
+          OutlinedButton(
+            onPressed: _busy ? null : _resetName,
+            child: const Text('Ripristina il nome originale'),
+          ),
+      ],
+    ),
+  ];
 
   List<Widget> _logoSection(Channel c) {
     final t = Theme.of(context).textTheme;
@@ -442,11 +507,15 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
       ),
       const SizedBox(height: 14),
       if (ChannelLogos.tvLogos.index.isEmpty)
-        Text('Elenco dei loghi non ancora scaricato da GitHub: riprova tra poco.',
-            style: t.bodySmall?.copyWith(color: VistaColors.textSecondary))
+        Text(
+          'Elenco dei loghi non ancora scaricato da GitHub: riprova tra poco.',
+          style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
+        )
       else if (results.isEmpty)
-        Text('Nessun logo trovato per "$_query".',
-            style: t.bodySmall?.copyWith(color: VistaColors.textSecondary))
+        Text(
+          'Nessun logo trovato per "$_query".',
+          style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
+        )
       else
         Wrap(
           spacing: 12,
@@ -465,7 +534,8 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
                     url,
                     fit: BoxFit.contain,
                     cacheWidth: 192,
-                    errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined),
+                    errorBuilder: (_, _, _) =>
+                        const Icon(Icons.broken_image_outlined),
                   ),
                 ),
               ),
@@ -508,8 +578,10 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
         style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
       ),
       const SizedBox(height: 10),
-      Text('Voci della lista: ${c.sourceNames.join(' · ')}',
-          style: t.bodySmall?.copyWith(color: VistaColors.textSecondary)),
+      Text(
+        'Voci della lista: ${c.sourceNames.join(' · ')}',
+        style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
+      ),
       const SizedBox(height: 14),
       Align(
         alignment: Alignment.centerLeft,
@@ -523,13 +595,16 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
         Row(
           children: [
             Expanded(
-              child: Text('Unito a mano: ${displayName(k)}',
-                  style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+              child: Text(
+                'Unito a mano: ${displayName(k)}',
+                style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
             ),
             OutlinedButton(
               onPressed: _busy
                   ? null
-                  : () => _save((p) => p.split(k), '${displayName(k)} separato.'),
+                  : () =>
+                        _save((p) => p.split(k), '${displayName(k)} separato.'),
               child: const Text('Separa'),
             ),
           ],
@@ -570,7 +645,9 @@ class _ChannelPickerScreenState extends State<_ChannelPickerScreen> {
   @override
   Widget build(BuildContext context) {
     final channels = _channelsOf(widget.store)
-        .where((c) => c.key != widget.exclude && _matches(c, _search.text.trim()))
+        .where(
+          (c) => c.key != widget.exclude && _matches(c, _search.text.trim()),
+        )
         .toList();
     return Scaffold(
       body: SafeArea(
@@ -582,8 +659,11 @@ class _ChannelPickerScreenState extends State<_ChannelPickerScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _title(context, 'Quale canale unire?',
-                        'Diventerà parte di ${displayName(widget.exclude)}.'),
+                    _title(
+                      context,
+                      'Quale canale unire?',
+                      'Diventerà parte di ${displayName(widget.exclude)}.',
+                    ),
                     const SizedBox(height: 16),
                     TvTextField(controller: _search, hint: 'Cerca un canale'),
                   ],

@@ -20,6 +20,9 @@ class TvTextField extends StatefulWidget {
     this.textInputAction,
     this.autofillHints,
     this.onSubmitted,
+    this.autofocus = false,
+    this.editOnFocus = false,
+    this.prefixIcon,
   });
 
   final TextEditingController controller;
@@ -30,6 +33,12 @@ class TvTextField extends StatefulWidget {
   final TextInputAction? textInputAction;
   final Iterable<String>? autofillHints;
   final ValueChanged<String>? onSubmitted;
+  final bool autofocus;
+
+  /// Si scrive appena il campo ha il focus (PC e telefono); su TV serve OK,
+  /// altrimenti la tastiera a schermo si aprirebbe passando col D-pad.
+  final bool editOnFocus;
+  final Widget? prefixIcon;
 
   @override
   State<TvTextField> createState() => _TvTextFieldState();
@@ -43,13 +52,17 @@ class _TvTextFieldState extends State<TvTextField> {
   late final FocusNode _node = FocusNode(onKeyEvent: _onKey);
   bool _editing = false;
 
+  /// Su PC e telefono si scrive subito: la sola lettura serve solo col
+  /// telecomando, per non aprire la tastiera a schermo passando col D-pad.
+  bool get _direct => widget.editOnFocus || !Device.isTv;
+
   @override
   void initState() {
     super.initState();
     _node.addListener(() {
-      if (_node.hasFocus && _carryEditing) {
+      if (_node.hasFocus && (_carryEditing || widget.editOnFocus)) {
         _carryEditing = false;
-        setState(() => _editing = true);
+        if (!_editing) setState(() => _editing = true);
       } else if (!_node.hasFocus && _editing) {
         setState(() => _editing = false);
       }
@@ -71,6 +84,7 @@ class _TvTextFieldState extends State<TvTextField> {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
     final k = e.logicalKey;
     if (!_editing &&
+        !_direct &&
         (k == LogicalKeyboardKey.select ||
             k == LogicalKeyboardKey.enter ||
             k == LogicalKeyboardKey.numpadEnter ||
@@ -80,9 +94,11 @@ class _TvTextFieldState extends State<TvTextField> {
     }
     if (k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.arrowUp) {
       setState(() => _editing = false);
-      node.focusInDirection(k == LogicalKeyboardKey.arrowDown
-          ? TraversalDirection.down
-          : TraversalDirection.up);
+      node.focusInDirection(
+        k == LogicalKeyboardKey.arrowDown
+            ? TraversalDirection.down
+            : TraversalDirection.up,
+      );
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -98,11 +114,12 @@ class _TvTextFieldState extends State<TvTextField> {
     return TextField(
       controller: widget.controller,
       focusNode: _node,
+      autofocus: widget.autofocus,
       enabled: widget.enabled,
       // In sola lettura Flutter non apre la connessione con la tastiera;
       // quando torna modificabile con il focus la apre da solo.
-      readOnly: !_editing,
-      showCursor: _editing,
+      readOnly: !_editing && !_direct,
+      showCursor: _editing || _direct,
       obscureText: widget.obscure,
       autocorrect: false,
       enableSuggestions: !widget.obscure,
@@ -110,18 +127,20 @@ class _TvTextFieldState extends State<TvTextField> {
       textInputAction: widget.textInputAction,
       autofillHints: widget.autofillHints,
       onTap: _startEditing,
-      onEditingComplete:
-          widget.textInputAction == TextInputAction.next ? _next : null,
+      onEditingComplete: widget.textInputAction == TextInputAction.next
+          ? _next
+          : null,
       onSubmitted: (v) {
         setState(() => _editing = false);
         widget.onSubmitted?.call(v);
       },
       decoration: InputDecoration(
         hintText: widget.hint,
+        prefixIcon: widget.prefixIcon,
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
           borderSide: BorderSide(
-            color: _editing ? VistaColors.accent : Colors.white,
+            color: _editing || _direct ? VistaColors.accent : Colors.white,
             width: 3,
           ),
         ),

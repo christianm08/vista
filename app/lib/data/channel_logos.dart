@@ -47,20 +47,28 @@ abstract final class ChannelLogos {
   /// Scarica di nuovo l'elenco da GitHub. Senza rete resta la cache.
   static Future<void> refresh() async {
     try {
-      final res = await http.get(tvLogoTreeUri, headers: {
-        'User-Agent': 'Vista/0.1',
-        'Accept': 'application/vnd.github+json',
-      }).timeout(const Duration(seconds: 30));
+      final res = await http
+          .get(
+            tvLogoTreeUri,
+            headers: {
+              'User-Agent': 'Vista/0.1',
+              'Accept': 'application/vnd.github+json',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
       if (res.statusCode != 200) return;
       final body = utf8.decode(res.bodyBytes);
-      final index =
-          await Isolate.run(() => buildTvLogoIndex(pathsFromGithubTree(body)));
+      final index = await Isolate.run(
+        () => buildTvLogoIndex(pathsFromGithubTree(body)),
+      );
       if (index.isEmpty) return;
       notifier.value = TvLogos(index);
-      await (await _file()).writeAsString(jsonEncode({
-        'fetchedAt': DateTime.now().toIso8601String(),
-        'logos': index,
-      }));
+      await (await _file()).writeAsString(
+        jsonEncode({
+          'fetchedAt': DateTime.now().toIso8601String(),
+          'logos': index,
+        }),
+      );
     } catch (_) {
       // rete assente o limite di GitHub: si riprova al prossimo avvio
     }
@@ -69,8 +77,8 @@ abstract final class ChannelLogos {
   /// Catena dei loghi: scelto dall'utente, tv-logos, `tvg-logo` della lista.
   /// Le iniziali sono l'ultima scelta, in `ChannelLogo`.
   static List<String> candidates(Channel c) => {
-        if (c.customLogo.isNotEmpty) c.customLogo,
-        ?tvLogos.urlFor(c),
-        if (c.logo.isNotEmpty) c.logo,
-      }.toList();
+    if (c.customLogo.isNotEmpty) c.customLogo,
+    ?tvLogos.urlFor(c),
+    if (c.logo.isNotEmpty) c.logo,
+  }.toList();
 }

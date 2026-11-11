@@ -20,15 +20,15 @@ sealed class VistaSource {
   String get label;
 
   static VistaSource fromJson(Map<String, dynamic> j) => switch (j['type']) {
-        'xtream' => XtreamSource(
-            XtreamCredentials.fromJson(j['credentials'] as Map<String, dynamic>),
-            liveExtension: j['liveExtension'] as String? ?? 'ts',
-          ),
-        _ => M3uSource(
-            j['location'] as String? ?? '',
-            isFile: j['isFile'] as bool? ?? false,
-          ),
-      };
+    'xtream' => XtreamSource(
+      XtreamCredentials.fromJson(j['credentials'] as Map<String, dynamic>),
+      liveExtension: j['liveExtension'] as String? ?? 'ts',
+    ),
+    _ => M3uSource(
+      j['location'] as String? ?? '',
+      isFile: j['isFile'] as bool? ?? false,
+    ),
+  };
 }
 
 /// Lista M3U da indirizzo o da file.
@@ -47,8 +47,11 @@ class M3uSource extends VistaSource {
   }
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': 'm3u', 'location': location, 'isFile': isFile};
+  Map<String, dynamic> toJson() => {
+    'type': 'm3u',
+    'location': location,
+    'isFile': isFile,
+  };
 }
 
 /// Account Xtream Codes.
@@ -63,10 +66,10 @@ class XtreamSource extends VistaSource {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'xtream',
-        'credentials': credentials.toJson(),
-        'liveExtension': liveExtension,
-      };
+    'type': 'xtream',
+    'credentials': credentials.toJson(),
+    'liveExtension': liveExtension,
+  };
 }
 
 /// Fonte + catalogo pronto da mostrare.
@@ -80,7 +83,8 @@ final _urlPattern = RegExp(r'\b[a-z][a-z0-9+.-]*://\S+', caseSensitive: false);
 
 /// Testo di un errore da mostrare a schermo senza indirizzi: gli URL Xtream
 /// contengono nome utente e password.
-String redactError(Object e) => e.toString().replaceAll(_urlPattern, '[indirizzo]');
+String redactError(Object e) =>
+    e.toString().replaceAll(_urlPattern, '[indirizzo]');
 
 class SourceException implements Exception {
   SourceException(this.message);
@@ -123,14 +127,17 @@ class SourceStore {
     if (await pf.exists()) {
       try {
         prefs = ChannelPrefs.fromJson(
-            jsonDecode(await pf.readAsString()) as Map<String, dynamic>);
+          jsonDecode(await pf.readAsString()) as Map<String, dynamic>,
+        );
       } on FormatException {
         prefs = const ChannelPrefs();
       }
     }
     final raw = await _secure.read(key: _sourceKey);
     if (raw == null) return null;
-    final source = VistaSource.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    final source = VistaSource.fromJson(
+      jsonDecode(raw) as Map<String, dynamic>,
+    );
     return _publish(await _fromCache(source) ?? await refresh(source));
   }
 
@@ -154,7 +161,8 @@ class SourceStore {
         final f = await _file(_xtreamCache);
         if (!await f.exists()) return null;
         final data = XtreamData.fromJson(
-            jsonDecode(await f.readAsString()) as Map<String, dynamic>);
+          jsonDecode(await f.readAsString()) as Map<String, dynamic>,
+        );
         return Library(source, await _buildXtream(data, source));
     }
   }
@@ -162,8 +170,10 @@ class SourceStore {
   Library _publish(Library lib) => library.value = lib;
 
   /// Lista M3U letta da un file scelto dall'utente.
-  Future<Library> importM3uFile(String name, List<int> bytes) =>
-      _saveM3u(utf8.decode(bytes, allowMalformed: true), M3uSource(name, isFile: true));
+  Future<Library> importM3uFile(String name, List<int> bytes) => _saveM3u(
+    utf8.decode(bytes, allowMalformed: true),
+    M3uSource(name, isFile: true),
+  );
 
   /// Lista M3U da indirizzo. Un link `get.php` di un pannello Xtream passa
   /// dall'API Xtream, che dà anche locandine, trame ed episodi.
@@ -192,7 +202,8 @@ class SourceStore {
     switch (source) {
       case M3uSource(isFile: true):
         throw SourceException(
-            'Questa lista viene da un file: per aggiornarla scegli di nuovo il file.');
+          'Questa lista viene da un file: per aggiornarla scegli di nuovo il file.',
+        );
       case M3uSource(:final location):
         return _saveM3u(await _get(_checkedUri(location)), source);
       case XtreamSource(:final credentials):
@@ -202,15 +213,40 @@ class SourceStore {
   }
 
   /// Episodi di una serie Xtream (le liste M3U li hanno già).
-  Future<List<Episode>> episodes(VistaSource source, Series series) async {
-    if (series.episodes.isNotEmpty || source is! XtreamSource) {
-      return series.episodes;
+  Future<List<Episode>> episodes(VistaSource source, Series series) async =>
+      (await seriesInfo(source, series)).episodes;
+
+  final _seriesInfo = <String, SeriesInfo>{};
+  final _movieInfo = <String, TitleDetails>{};
+
+  /// Dettagli ed episodi di una serie; con Xtream chiesti una volta per
+  /// sessione, con M3U ci sono solo gli episodi della lista.
+  Future<SeriesInfo> seriesInfo(VistaSource source, Series series) async {
+    if (source is! XtreamSource) {
+      return SeriesInfo(TitleDetails.empty, series.episodes);
     }
+    final cached = _seriesInfo[series.id];
+    if (cached != null) return cached;
     final client = XtreamClient(source.credentials, _get);
-    return _xtream(() => client.episodes(series.id));
+    return _seriesInfo[series.id] = await _xtream(
+      () => client.seriesInfo(series.id),
+    );
+  }
+
+  /// Dettagli di un film (solo Xtream; altrimenti vuoti).
+  Future<TitleDetails> movieDetails(VistaSource source, Movie movie) async {
+    if (source is! XtreamSource) return TitleDetails.empty;
+    final cached = _movieInfo[movie.id];
+    if (cached != null) return cached;
+    final client = XtreamClient(source.credentials, _get);
+    return _movieInfo[movie.id] = await _xtream(
+      () => client.movieDetails(movie.id),
+    );
   }
 
   Future<void> clear() async {
+    _seriesInfo.clear();
+    _movieInfo.clear();
     await _secure.delete(key: _sourceKey);
     for (final n in [_m3uCache, _xtreamCache]) {
       final f = await _file(n);
@@ -225,7 +261,8 @@ class SourceStore {
     final catalog = await _buildM3u(text);
     if (catalog.isEmpty) {
       throw SourceException(
-          'Nessun contenuto trovato: il file non sembra una lista M3U valida.');
+        'Nessun contenuto trovato: il file non sembra una lista M3U valida.',
+      );
     }
     await (await _file(_m3uCache)).writeAsString(text);
     await _remember(source, _xtreamCache);
@@ -257,20 +294,30 @@ class SourceStore {
       _isolateXtream(data, s.credentials, s.liveExtension, prefs);
 
   static Future<Catalog> _isolateM3u(String text, ChannelPrefs prefs) =>
-      Isolate.run(() => _withPrefs(
-          buildM3uCatalog(parseM3u(text), merges: prefs.merges), prefs));
+      Isolate.run(
+        () => _withPrefs(
+          buildM3uCatalog(parseM3u(text), merges: prefs.merges),
+          prefs,
+        ),
+      );
 
-  static Future<Catalog> _isolateXtream(XtreamData data,
-          XtreamCredentials creds, String ext, ChannelPrefs prefs) =>
-      Isolate.run(() => _withPrefs(
-          buildXtreamCatalog(data, creds, liveExtension: ext, merges: prefs.merges),
-          prefs));
+  static Future<Catalog> _isolateXtream(
+    XtreamData data,
+    XtreamCredentials creds,
+    String ext,
+    ChannelPrefs prefs,
+  ) => Isolate.run(
+    () => _withPrefs(
+      buildXtreamCatalog(data, creds, liveExtension: ext, merges: prefs.merges),
+      prefs,
+    ),
+  );
 
   static Catalog _withPrefs(Catalog c, ChannelPrefs prefs) => Catalog(
-        live: ResolveResult(prefs.apply(c.live.channels), c.live.report),
-        movies: c.movies,
-        series: c.series,
-      );
+    live: ResolveResult(prefs.apply(c.live.channels), c.live.report),
+    movies: c.movies,
+    series: c.series,
+  );
 
   Future<T> _xtream<T>(Future<T> Function() job) async {
     try {
@@ -286,7 +333,8 @@ class SourceStore {
         uri.host.isEmpty ||
         !(uri.isScheme('http') || uri.isScheme('https'))) {
       throw SourceException(
-          'Indirizzo non valido: deve iniziare con http:// o https://');
+        'Indirizzo non valido: deve iniziare con http:// o https://',
+      );
     }
     return uri;
   }
@@ -302,7 +350,8 @@ class SourceStore {
       throw SourceException('${uri.host} non ha risposto in tempo.');
     } on SocketException {
       throw SourceException(
-          'Impossibile raggiungere ${uri.host}: controlla l\'indirizzo e la connessione.');
+        'Impossibile raggiungere ${uri.host}: controlla l\'indirizzo e la connessione.',
+      );
     } on HandshakeException {
       throw SourceException('Connessione sicura con ${uri.host} non riuscita.');
     } on Exception {
@@ -310,7 +359,8 @@ class SourceStore {
     }
     if (res.statusCode == 401 || res.statusCode == 403) {
       throw SourceException(
-          'Accesso negato da ${uri.host} (${res.statusCode}): controlla le credenziali.');
+        'Accesso negato da ${uri.host} (${res.statusCode}): controlla le credenziali.',
+      );
     }
     if (res.statusCode != 200) {
       throw SourceException('${uri.host} ha risposto ${res.statusCode}.');

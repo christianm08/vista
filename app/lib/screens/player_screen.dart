@@ -7,9 +7,12 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
+import '../app_scope.dart';
 import '../data/source_store.dart' show redactError;
+import '../data/user_store.dart';
 import '../player/stream_picker.dart';
 import '../player/video.dart';
+import 'vod_player_screen.dart' show PlayerBackButton;
 import '../theme.dart';
 import '../widgets/channel_logo.dart';
 import '../widgets/epg_guide.dart';
@@ -43,7 +46,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   final _player = Player(
     configuration: const PlayerConfiguration(
-        logLevel: kDebugMode ? MPVLogLevel.warn : MPVLogLevel.error),
+      logLevel: kDebugMode ? MPVLogLevel.warn : MPVLogLevel.error,
+    ),
   );
   late final _video = vistaVideoController(_player);
   final _subs = <StreamSubscription<dynamic>>[];
@@ -63,29 +67,61 @@ class _PlayerScreenState extends State<PlayerScreen> {
   DateTime _now = DateTime.now();
 
   Channel get _channel => widget.channels[_channelIndex];
+  late final UserStore _user;
+
+  bool get _favorite => _user.isFavorite(UserKey.channel(_channel.key));
+
+  void _toggleFavorite() {
+    _user.toggleFavorite(UserKey.channel(_channel.key));
+    setState(() {});
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 2),
+          content: Text(
+            _favorite
+                ? '${_channel.name} aggiunto ai preferiti'
+                : '${_channel.name} tolto dai preferiti',
+          ),
+        ),
+      );
+  }
 
   @override
   void initState() {
     super.initState();
+    _user = AppScope.of(context).user;
     _subs
       // Il testo dell'errore contiene l'URL (con Xtream, anche le credenziali).
-      ..add(_player.stream.error.listen((_) => _onFail('errore di riproduzione')))
+      ..add(
+        _player.stream.error.listen((_) => _onFail('errore di riproduzione')),
+      )
       // "playing" diventa vero appena parte il caricamento: il canale funziona
       // davvero solo quando arrivano i fotogrammi (o l'audio avanza).
-      ..add(_player.stream.height.listen((h) {
-        if (h != null && h > 0) _onFrames();
-        if (mounted) setState(() => _height = h);
-      }))
-      ..add(_player.stream.position.listen((p) {
-        if (p > const Duration(seconds: 2)) _onFrames();
-      }))
-      ..add(_player.stream.buffering.listen((b) {
-        if (b && _playing) _armWatchdog();
-        if (!b && _playing) _watchdog?.cancel();
-      }));
+      ..add(
+        _player.stream.height.listen((h) {
+          if (h != null && h > 0) _onFrames();
+          if (mounted) setState(() => _height = h);
+        }),
+      )
+      ..add(
+        _player.stream.position.listen((p) {
+          if (p > const Duration(seconds: 2)) _onFrames();
+        }),
+      )
+      ..add(
+        _player.stream.buffering.listen((b) {
+          if (b && _playing) _armWatchdog();
+          if (!b && _playing) _watchdog?.cancel();
+        }),
+      );
     if (kDebugMode) {
-      _subs.add(_player.stream.log.listen(
-          (l) => debugPrint(redactError('mpv ${l.prefix}: ${l.text}'))));
+      _subs.add(
+        _player.stream.log.listen(
+          (l) => debugPrint(redactError('mpv ${l.prefix}: ${l.text}')),
+        ),
+      );
     }
     _tuneChannel(_channelIndex);
   }
@@ -111,6 +147,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _tuneChannel(int i) {
     _channelIndex = i;
+    final key = _channel.key;
+    // Dopo il frame: chi ascolta (la home) non si ridisegna durante il build.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _user.channelWatched(key),
+    );
     _picker = StreamPicker(_channel.streams);
     _showBanner();
     _open();
@@ -135,16 +176,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!mounted) return;
     _watchdog?.cancel();
     if (_picker.fail()) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        duration: const Duration(seconds: 2),
-        content: Text('Flusso non disponibile ($why): provo il successivo'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 2),
+          content: Text('Flusso non disponibile ($why): provo il successivo'),
+        ),
+      );
       _open();
     } else {
       _player.stop();
-      setState(() => _message = _picker.auto
-          ? 'Nessun flusso di ${_channel.name} funziona in questo momento.'
-          : 'Questo flusso non funziona ($why). Prova "Auto" o un altro flusso.');
+      setState(
+        () => _message = _picker.auto
+            ? 'Nessun flusso di ${_channel.name} funziona in questo momento.'
+            : 'Questo flusso non funziona ($why). Prova "Auto" o un altro flusso.',
+      );
     }
   }
 
@@ -180,8 +225,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_listScroll.hasClients) {
-        final target = _channelIndex * _listRow - _listScroll.position.viewportDimension / 2;
-        _listScroll.jumpTo(target.clamp(0.0, _listScroll.position.maxScrollExtent));
+        final target =
+            _channelIndex * _listRow -
+            _listScroll.position.viewportDimension / 2;
+        _listScroll.jumpTo(
+          target.clamp(0.0, _listScroll.position.maxScrollExtent),
+        );
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _listFocus.context != null) _listFocus.requestFocus();
@@ -202,6 +251,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
     if (e is KeyUpEvent || _list) return KeyEventResult.ignored;
     final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.escape) {
+      if (e is KeyDownEvent) Navigator.of(context).maybePop();
+      return KeyEventResult.handled;
+    }
     // OK apre sempre l'elenco dei canali, anche con la barra visibile, a meno
     // che il focus sia su un pulsante del flusso.
     if (e is KeyDownEvent &&
@@ -213,11 +266,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return KeyEventResult.handled;
     }
     if (!_banner) {
-      if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp) {
+      if (k == LogicalKeyboardKey.arrowUp ||
+          k == LogicalKeyboardKey.channelUp) {
         _zap(-1);
         return KeyEventResult.handled;
       }
-      if (k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.channelDown) {
+      if (k == LogicalKeyboardKey.arrowDown ||
+          k == LogicalKeyboardKey.channelDown) {
         _zap(1);
         return KeyEventResult.handled;
       }
@@ -291,7 +346,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 AnimatedOpacity(
                   opacity: _banner ? 1 : 0,
                   duration: const Duration(milliseconds: 200),
-                  child: IgnorePointer(ignoring: !_banner, child: _buildBanner()),
+                  child: IgnorePointer(
+                    ignoring: !_banner,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _buildBanner(),
+                        if (!Device.isTv)
+                          const Align(
+                            alignment: Alignment.topLeft,
+                            child: PlayerBackButton(),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
                 _buildList(),
               ],
@@ -321,14 +389,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final t = Theme.of(context).textTheme;
     final real = qualityFromHeight(_height);
     final wide = MediaQuery.sizeOf(context).width >= 900;
-    final upcoming = widget.guide?.upcoming(_channel, now: _now, count: 2) ?? const [];
+    final upcoming =
+        widget.guide?.upcoming(_channel, now: _now, count: 2) ?? const [];
     final current = upcoming.where((p) => p.isOnAt(_now)).firstOrNull;
     final next = upcoming.where((p) => p.start.isAfter(_now)).firstOrNull;
     return Align(
       alignment: Alignment.bottomCenter,
       child: Container(
         width: double.infinity,
-        padding: EdgeInsets.fromLTRB(wide ? 40 : 16, 48, wide ? 40 : 16, wide ? 28 : 16),
+        padding: EdgeInsets.fromLTRB(
+          wide ? 40 : 16,
+          48,
+          wide ? 40 : 16,
+          wide ? 28 : 16,
+        ),
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -345,9 +419,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text('${_channel.number}',
-                      style: t.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w800, color: VistaColors.accent)),
+                  Text(
+                    '${_channel.number}',
+                    style: t.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: VistaColors.accent,
+                    ),
+                  ),
                   const SizedBox(width: 16),
                   ChannelLogo(channel: _channel, size: 56),
                   const SizedBox(width: 16),
@@ -355,14 +433,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_channel.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: t.titleMedium?.copyWith(color: VistaColors.textSecondary)),
-                        Text(current?.title ?? 'Nessuna informazione sul programma',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: t.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+                        Text(
+                          _channel.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.titleMedium?.copyWith(
+                            color: VistaColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          current?.title ??
+                              'Nessuna informazione sul programma',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -378,7 +465,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               'flusso ${_picker.index + 1}/${_picker.streams.length}',
                             if (real.isNotEmpty) '$real · ${_height}p',
                           ].join(' · '),
-                          style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+                          style: t.bodySmall?.copyWith(
+                            color: VistaColors.textTertiary,
+                          ),
                         ),
                       ],
                     ),
@@ -388,8 +477,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Text(hhmm(current.start),
-                        style: t.bodySmall?.copyWith(color: VistaColors.textSecondary)),
+                    Text(
+                      hhmm(current.start),
+                      style: t.bodySmall?.copyWith(
+                        color: VistaColors.textSecondary,
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: ClipRRect(
@@ -402,39 +495,57 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Text(hhmm(current.stop),
-                        style: t.bodySmall?.copyWith(color: VistaColors.textSecondary)),
+                    Text(
+                      hhmm(current.stop),
+                      style: t.bodySmall?.copyWith(
+                        color: VistaColors.textSecondary,
+                      ),
+                    ),
                   ],
                 ),
               ],
               if (next != null) ...[
                 const SizedBox(height: 8),
-                Text('Dopo · ${hhmm(next.start)}  ${next.title}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.bodyMedium?.copyWith(color: VistaColors.textSecondary)),
+                Text(
+                  'Dopo · ${hhmm(next.start)}  ${next.title}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.bodyMedium?.copyWith(
+                    color: VistaColors.textSecondary,
+                  ),
+                ),
               ],
-              if (_picker.streams.length > 1) ...[
+              ...[
                 const SizedBox(height: 14),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _streamChip('Auto', _picker.auto, () {
-                        _picker.reset();
-                        _open();
-                        _showBanner();
-                      }),
-                      for (var i = 0; i < _picker.streams.length; i++)
-                        _streamChip(
-                          _picker.streams[i].quality.label,
-                          !_picker.auto && _picker.index == i,
-                          () {
-                            _picker.select(i);
-                            _open();
-                            _showBanner();
-                          },
-                        ),
+                      _streamChip(
+                        _favorite ? '★ Preferito' : '☆ Aggiungi ai preferiti',
+                        false,
+                        () {
+                          _toggleFavorite();
+                          _showBanner();
+                        },
+                      ),
+                      if (_picker.streams.length > 1)
+                        _streamChip('Auto', _picker.auto, () {
+                          _picker.reset();
+                          _open();
+                          _showBanner();
+                        }),
+                      if (_picker.streams.length > 1)
+                        for (var i = 0; i < _picker.streams.length; i++)
+                          _streamChip(
+                            _picker.streams[i].quality.label,
+                            !_picker.auto && _picker.index == i,
+                            () {
+                              _picker.select(i);
+                              _open();
+                              _showBanner();
+                            },
+                          ),
                     ],
                   ),
                 ),
@@ -487,8 +598,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
                         child: Row(
                           children: [
-                            Text('Canali',
-                                style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                            Text(
+                              'Canali',
+                              style: t.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                             const Spacer(),
                             const VistaClock(),
                           ],
@@ -538,14 +653,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _closeList();
           if (i != _channelIndex) _tuneChannel(i);
         },
+        onLongPress: () {
+          _user.toggleFavorite(UserKey.channel(c.key));
+          setState(() {});
+        },
         child: Row(
           children: [
             SizedBox(
               width: 34,
-              child: Text('${c.number}',
-                  style: t.labelLarge?.copyWith(
-                      color: playing ? VistaColors.accent : VistaColors.textTertiary,
-                      fontWeight: FontWeight.w800)),
+              child: Text(
+                '${c.number}',
+                style: t.labelLarge?.copyWith(
+                  color: playing
+                      ? VistaColors.accent
+                      : VistaColors.textTertiary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
             ChannelLogo(channel: c, size: 38),
             const SizedBox(width: 10),
@@ -554,18 +678,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(c.name,
+                  Text(
+                    c.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  if (now != null)
+                    Text(
+                      now.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  if (now != null)
-                    Text(now.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.bodySmall?.copyWith(color: VistaColors.textTertiary)),
+                      style: t.bodySmall?.copyWith(
+                        color: VistaColors.textTertiary,
+                      ),
+                    ),
                 ],
               ),
             ),
+            if (_user.isFavorite(UserKey.channel(c.key)))
+              const Icon(
+                Icons.star_rounded,
+                size: 18,
+                color: VistaColors.accent,
+              ),
           ],
         ),
       ),

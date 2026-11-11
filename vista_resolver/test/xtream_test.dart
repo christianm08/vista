@@ -214,4 +214,72 @@ void main() {
       expect(parseXtreamEpisodes(null, creds), isEmpty);
     });
   });
+
+  group('dettagli', () {
+    test('data di aggiunta, genere e sfondo dal catalogo', () {
+      final cat = buildXtreamCatalog(
+        const XtreamData(
+          liveCategories: '[]',
+          live: '[]',
+          vodCategories: '[]',
+          vod: '[{"name":"Vetro","stream_id":1,"added":"1767225600","genre":"Thriller"},'
+              '{"name":"Finto","stream_id":2,"added":"0"}]',
+          seriesCategories: '[]',
+          series: '[{"name":"Marea","series_id":7,"last_modified":1767225600,'
+              '"backdrop_path":["","https://img.example/b.jpg"]}]',
+        ),
+        creds,
+      );
+      expect(cat.movies[0].added, DateTime.utc(2026, 1, 1));
+      expect(cat.movies[0].genre, 'Thriller');
+      expect(cat.movies[1].added, isNull);
+      expect(cat.series.single.added, DateTime.utc(2026, 1, 1));
+      expect(cat.series.single.backdrop, 'https://img.example/b.jpg');
+    });
+
+    test('get_vod_info con nomi di campo alternativi', () async {
+      final d = await XtreamClient(
+        creds,
+        fakePanel({
+          'get_vod_info': {
+            'info': {
+              'description': 'Un thriller.',
+              'actors': 'A, B',
+              'director': 'C',
+              'genre': 'Thriller',
+              'backdrop_path': 'https://img.example/bd.jpg',
+              'duration_secs': '6300',
+              'releasedate': '2024-05-01',
+              'rating': '7.25',
+              'youtube_trailer': 'abc123',
+            },
+          },
+        }),
+      ).movieDetails('501');
+      expect((d.plot, d.cast, d.director, d.genre), ('Un thriller.', 'A, B', 'C', 'Thriller'));
+      expect(d.backdrop, 'https://img.example/bd.jpg');
+      expect(d.duration, const Duration(minutes: 105));
+      expect((d.releaseDate, d.rating, d.trailer), ('2024-05-01', '7,3', 'abc123'));
+      expect(parseXtreamDetails(null).plot, '');
+    });
+
+    test('get_series_info: dettagli ed episodi insieme', () async {
+      final info = await XtreamClient(
+        creds,
+        fakePanel({
+          'get_series_info': {
+            'info': {'plot': 'Una biologa…', 'episode_run_time': '45', 'cast': 'X'},
+            'episodes': {
+              '1': [
+                {'id': 1, 'episode_num': 1, 'season': 1, 'title': 'Uno'},
+              ],
+            },
+          },
+        }),
+      ).seriesInfo('77');
+      expect(info.details.plot, 'Una biologa…');
+      expect(info.details.duration, const Duration(minutes: 45));
+      expect(info.episodes.single.title, 'Uno');
+    });
+  });
 }

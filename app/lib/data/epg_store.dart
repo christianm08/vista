@@ -36,22 +36,24 @@ class EpgStore {
 
   /// URL delle guide per una fonte, in ordine di priorità.
   static List<Uri> urisFor(Library lib) => [
-        defaultEpgUri,
-        ...switch (lib.source) {
-          XtreamSource(:final credentials) => [
-              Uri.parse('${credentials.server}/xmltv.php').replace(queryParameters: {
-                'username': credentials.username,
-                'password': credentials.password,
-              }),
-            ],
-          M3uSource() => [
-              for (final u in lib.catalog.live.report.epgUrl.split(','))
-                if (Uri.tryParse(u.trim()) case final uri?
-                    when uri.isScheme('http') || uri.isScheme('https'))
-                  uri,
-            ],
-        },
-      ];
+    defaultEpgUri,
+    ...switch (lib.source) {
+      XtreamSource(:final credentials) => [
+        Uri.parse('${credentials.server}/xmltv.php').replace(
+          queryParameters: {
+            'username': credentials.username,
+            'password': credentials.password,
+          },
+        ),
+      ],
+      M3uSource() => [
+        for (final u in lib.catalog.live.report.epgUrl.split(','))
+          if (Uri.tryParse(u.trim()) case final uri?
+              when uri.isScheme('http') || uri.isScheme('https'))
+            uri,
+      ],
+    },
+  ];
 
   void _onLibrary() {
     final lib = sources.library.value;
@@ -103,8 +105,11 @@ class EpgStore {
       }
       final path = f.path;
       try {
-        data.add(await Isolate.run(
-            () => parseXmltv(File(path).openRead(), from: from, to: to)));
+        data.add(
+          await Isolate.run(
+            () => parseXmltv(File(path).openRead(), from: from, to: to),
+          ),
+        );
       } catch (_) {
         data.add(EpgData.empty);
       }
@@ -135,7 +140,8 @@ class EpgStore {
 
   Future<bool> _sameSource(File f, Uri u) async {
     try {
-      final m = jsonDecode(await _meta(f).readAsString()) as Map<String, dynamic>;
+      final m =
+          jsonDecode(await _meta(f).readAsString()) as Map<String, dynamic>;
       return m['source'] == _fingerprint(u);
     } catch (_) {
       return false;
@@ -145,7 +151,8 @@ class EpgStore {
   Future<bool> _fresh(File f, Uri u) async {
     if (!await f.exists() || !await _sameSource(f, u)) return false;
     try {
-      final m = jsonDecode(await _meta(f).readAsString()) as Map<String, dynamic>;
+      final m =
+          jsonDecode(await _meta(f).readAsString()) as Map<String, dynamic>;
       final at = DateTime.tryParse(m['at'] as String? ?? '');
       return at != null && DateTime.now().difference(at) < _maxAge;
     } catch (_) {
@@ -166,10 +173,12 @@ class EpgStore {
       await res.stream.timeout(const Duration(seconds: 60)).pipe(sink);
       if (await tmp.length() < 64) return false;
       await tmp.rename(target.path);
-      await _meta(target).writeAsString(jsonEncode({
-        'source': _fingerprint(u),
-        'at': DateTime.now().toIso8601String(),
-      }));
+      await _meta(target).writeAsString(
+        jsonEncode({
+          'source': _fingerprint(u),
+          'at': DateTime.now().toIso8601String(),
+        }),
+      );
       return true;
     } catch (_) {
       return false;

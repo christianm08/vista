@@ -236,11 +236,59 @@ class XtreamClient {
   }
 
   /// Episodi di una serie (`get_series_info`).
-  Future<List<Episode>> episodes(String seriesId) async {
+  Future<List<Episode>> episodes(String seriesId) async =>
+      (await seriesInfo(seriesId)).episodes;
+
+  /// Dettagli ed episodi di una serie (`get_series_info`).
+  Future<SeriesInfo> seriesInfo(String seriesId) async {
     final j = _decode(
         await _fetch(apiUri('get_series_info', {'series_id': seriesId})));
-    return parseXtreamEpisodes(j, credentials);
+    return SeriesInfo(
+      parseXtreamDetails(j is Map ? j['info'] : null),
+      parseXtreamEpisodes(j, credentials),
+    );
   }
+
+  /// Dettagli di un film (`get_vod_info`).
+  Future<TitleDetails> movieDetails(String vodId) async {
+    final j = _decode(await _fetch(apiUri('get_vod_info', {'vod_id': vodId})));
+    return parseXtreamDetails(j is Map ? j['info'] : null);
+  }
+}
+
+/// Risposta di `get_series_info`.
+class SeriesInfo {
+  const SeriesInfo(this.details, this.episodes);
+  final TitleDetails details;
+  final List<Episode> episodes;
+}
+
+/// Legge il blocco `info` di `get_vod_info` / `get_series_info`. I pannelli
+/// usano nomi diversi per gli stessi campi: si prova il primo non vuoto.
+TitleDetails parseXtreamDetails(Object? info) {
+  if (info is! Map) return TitleDetails.empty;
+  String pick(List<String> keys) {
+    for (final k in keys) {
+      final v = _str(info[k]).trim();
+      if (v.isNotEmpty) return v;
+    }
+    return '';
+  }
+
+  final runtime = _int(info['episode_run_time']); // minuti
+  final secs = _int(info['duration_secs']) ?? (runtime == null ? null : runtime * 60);
+  return TitleDetails(
+    plot: pick(['plot', 'description', 'overview']),
+    genre: pick(['genre']),
+    cast: pick(['cast', 'actors']),
+    director: pick(['director']),
+    backdrop: _firstImage(info['backdrop_path']),
+    poster: pick(['movie_image', 'cover_big', 'cover']),
+    duration: secs == null || secs <= 0 ? null : Duration(seconds: secs),
+    releaseDate: pick(['releasedate', 'releaseDate', 'release_date']),
+    rating: _rating(info['rating']),
+    trailer: pick(['youtube_trailer']),
+  );
 }
 
 String _segment(String s) => Uri.encodeComponent(s);
@@ -295,6 +343,8 @@ Catalog buildXtreamCatalog(
       group: vodCats[_str(s['category_id'])] ?? 'Altri',
       rating: _rating(s['rating']),
       plot: _str(s['plot']),
+      added: _epoch(s['added']),
+      genre: _str(s['genre']).trim(),
     ));
   }
 
@@ -311,6 +361,9 @@ Catalog buildXtreamCatalog(
       group: seriesCats[_str(s['category_id'])] ?? 'Altri',
       rating: _rating(s['rating']),
       plot: _str(s['plot']),
+      added: _epoch(s['last_modified']),
+      genre: _str(s['genre']).trim(),
+      backdrop: _firstImage(s['backdrop_path']),
     ));
   }
 
@@ -411,6 +464,25 @@ int? _int(Object? v) {
   }
   if (v is bool) return v ? 1 : 0;
   return null;
+}
+
+/// Secondi Unix (come numero o stringa) → data; `null` se mancante o assurda.
+DateTime? _epoch(Object? v) {
+  final s = _int(v);
+  if (s == null || s < 946684800) return null; // prima del 2000: dato finto
+  return DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
+}
+
+/// `backdrop_path` è una lista di URL, a volte una stringa sola.
+String _firstImage(Object? v) {
+  if (v is List) {
+    for (final x in v) {
+      final s = _str(x).trim();
+      if (s.isNotEmpty) return s;
+    }
+    return '';
+  }
+  return _str(v).trim();
 }
 
 final _yearIn = RegExp(r'(?:19|20)\d{2}');

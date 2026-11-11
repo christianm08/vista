@@ -43,12 +43,12 @@ class ChannelLogo extends StatelessWidget {
     final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
 
     Widget image(int i) => Image.network(
-          urls[i],
-          key: ValueKey(urls[i]),
-          fit: BoxFit.contain,
-          cacheWidth: px,
-          errorBuilder: (_, _, _) => i + 1 < urls.length ? image(i + 1) : mono,
-        );
+      urls[i],
+      key: ValueKey(urls[i]),
+      fit: BoxFit.contain,
+      cacheWidth: px,
+      errorBuilder: (_, _, _) => i + 1 < urls.length ? image(i + 1) : mono,
+    );
 
     return ClipRRect(
       borderRadius: r,
@@ -64,7 +64,11 @@ class ChannelLogo extends StatelessWidget {
 }
 
 class _Monogram extends StatelessWidget {
-  const _Monogram({required this.text, required this.color, required this.size});
+  const _Monogram({
+    required this.text,
+    required this.color,
+    required this.size,
+  });
   final String text;
   final Color color;
   final double size;

@@ -86,12 +86,16 @@ class _LivePreviewState extends State<LivePreview> {
     }
 
     _subs
-      ..add(p.stream.height.listen((h) {
-        if (h != null && h > 0) ready();
-      }))
-      ..add(p.stream.position.listen((d) {
-        if (d > const Duration(seconds: 2)) ready();
-      }))
+      ..add(
+        p.stream.height.listen((h) {
+          if (h != null && h > 0) ready();
+        }),
+      )
+      ..add(
+        p.stream.position.listen((d) {
+          if (d > const Duration(seconds: 2)) ready();
+        }),
+      )
       ..add(p.stream.error.listen((_) => _next()));
   }
 
@@ -162,8 +166,12 @@ class _LivePreviewState extends State<LivePreview> {
                       ChannelLogo(channel: c, size: 56),
                       const SizedBox(height: 10),
                       if (_failed)
-                        Text('Anteprima non disponibile',
-                            style: t.bodySmall?.copyWith(color: VistaColors.textTertiary))
+                        Text(
+                          'Anteprima non disponibile',
+                          style: t.bodySmall?.copyWith(
+                            color: VistaColors.textTertiary,
+                          ),
+                        )
                       else
                         const SizedBox(
                           width: 18,
