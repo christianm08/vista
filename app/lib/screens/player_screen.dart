@@ -10,8 +10,10 @@ import 'package:vista_resolver/vista_resolver.dart';
 import '../app_scope.dart';
 import '../data/source_store.dart' show redactError;
 import '../data/user_store.dart';
+import '../player/options_panel.dart';
 import '../player/stream_picker.dart';
 import '../player/video.dart';
+import 'multiview_screen.dart';
 import 'vod_player_screen.dart' show PlayerBackButton;
 import '../theme.dart';
 import '../widgets/channel_logo.dart';
@@ -93,6 +95,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     _user = AppScope.of(context).user;
     _subs
+      ..add(
+        _player.stream.tracks.listen((t) {
+          if (mounted) setState(() => _tracks = t);
+        }),
+      )
+      ..add(
+        _player.stream.track.listen((t) {
+          if (mounted) setState(() => _track = t);
+        }),
+      )
       // Il testo dell'errore contiene l'URL (con Xtream, anche le credenziali).
       ..add(
         _player.stream.error.listen((_) => _onFail('errore di riproduzione')),
@@ -204,7 +216,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bannerTimer = Timer(_bannerTimeout, () {
       if (mounted && _message == null) {
         setState(() => _banner = false);
-        if (!_list) _rootFocus.requestFocus();
+        if (!_list) _focusRoot();
       }
     });
   }
@@ -212,7 +224,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _hideBanner() {
     _bannerTimer?.cancel();
     setState(() => _banner = false);
-    _rootFocus.requestFocus();
+    _focusRoot();
   }
 
   void _openList() {
@@ -238,9 +250,111 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
+  /// Il focus torna al player solo se è la schermata in primo piano: i timer
+  /// (es. la barra che si nasconde) non devono rubarlo al Multiview.
+  void _focusRoot() {
+    if (!mounted) return;
+    if (ModalRoute.of(context)?.isCurrent ?? true) _rootFocus.requestFocus();
+  }
+
   void _closeList() {
     setState(() => _list = false);
-    _rootFocus.requestFocus();
+    _focusRoot();
+  }
+
+  // --- menu del player ---------------------------------------------------------
+
+  bool _options = false;
+  Tracks _tracks = const Tracks();
+  Track _track = const Track();
+
+  void _openOptions() {
+    _bannerTimer?.cancel();
+    setState(() {
+      _options = true;
+      _banner = false;
+    });
+  }
+
+  void _closeOptions() {
+    setState(() => _options = false);
+    _focusRoot();
+  }
+
+  /// Multiview: il player a schermo intero si ferma (un decoder in meno) e
+  /// riparte al ritorno, sul canale scelto se ne è stato scelto uno.
+  Future<void> _openMultiview() async {
+    _bannerTimer?.cancel();
+    setState(() {
+      _options = false;
+      _list = false;
+      _banner = false;
+    });
+    _watchdog?.cancel();
+    await _player.stop();
+    if (!mounted) return;
+    final picked = await Navigator.of(context).push<Channel>(
+      MaterialPageRoute(
+        builder: (_) => MultiviewScreen(
+          channels: widget.channels,
+          initial: [_channel],
+          guide: widget.guide,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final i = picked == null ? -1 : widget.channels.indexOf(picked);
+    _tuneChannel(i >= 0 ? i : _channelIndex);
+    // Dopo l'animazione di ritorno la route è di nuovo in primo piano.
+    Future.delayed(const Duration(milliseconds: 350), _focusRoot);
+  }
+
+  List<PlayerOptionSection> _optionSections() {
+    void done() => _closeOptions();
+    return [
+      if (_picker.streams.length > 1)
+        PlayerOptionSection('Flusso', [
+          PlayerOption(
+            label: 'Automatico',
+            detail:
+                'Il migliore che funziona; se si blocca passa al successivo',
+            selected: _picker.auto,
+            onTap: () {
+              _picker.reset();
+              _open();
+              done();
+            },
+          ),
+          for (var i = 0; i < _picker.streams.length; i++)
+            PlayerOption(
+              label: 'Flusso ${i + 1} · ${_picker.streams[i].quality.label}',
+              detail: _picker.streams[i].sourceName,
+              selected: !_picker.auto && _picker.index == i,
+              onTap: () {
+                _picker.select(i);
+                _open();
+                done();
+              },
+            ),
+        ]),
+      ...trackSections(_player, _tracks, _track, onPicked: done),
+      PlayerOptionSection('Altro', [
+        PlayerOption(
+          icon: Icons.grid_view_rounded,
+          label: 'Multiview',
+          detail: 'Fino a 4 canali insieme',
+          onTap: _openMultiview,
+        ),
+        PlayerOption(
+          icon: _favorite ? Icons.star_rounded : Icons.star_outline_rounded,
+          label: _favorite ? 'Togli dai preferiti' : 'Aggiungi ai preferiti',
+          onTap: () {
+            _toggleFavorite();
+            done();
+          },
+        ),
+      ]),
+    ];
   }
 
   void _zap(int delta) {
@@ -249,8 +363,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
-    if (e is KeyUpEvent || _list) return KeyEventResult.ignored;
+    if (e is KeyUpEvent || _list || _options) return KeyEventResult.ignored;
     final k = e.logicalKey;
+    // Tasto Menu: il menu del player (flusso, audio, sottotitoli, Multiview).
+    if (k == LogicalKeyboardKey.contextMenu) {
+      if (e is KeyDownEvent) _openOptions();
+      return KeyEventResult.handled;
+    }
     if (k == LogicalKeyboardKey.escape) {
       if (e is KeyDownEvent) Navigator.of(context).maybePop();
       return KeyEventResult.handled;
@@ -307,10 +426,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_list && (!_banner || _message != null),
+      canPop: !_list && !_options && (!_banner || _message != null),
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (_list) {
+        if (_options) {
+          _closeOptions();
+        } else if (_list) {
           _closeList();
         } else {
           _hideBanner();
@@ -362,6 +483,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
                 _buildList(),
+                PlayerOptionsPanel(
+                  open: _options,
+                  title: _channel.name,
+                  sections: _options ? _optionSections() : const [],
+                  onClose: _closeOptions,
+                ),
               ],
             ),
           ),
@@ -529,6 +656,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           _showBanner();
                         },
                       ),
+                      _streamChip(
+                        '⚙ Audio, sottotitoli e flussi',
+                        false,
+                        _openOptions,
+                      ),
+                      _streamChip('▦ Multiview', false, _openMultiview),
                       if (_picker.streams.length > 1)
                         _streamChip('Auto', _picker.auto, () {
                           _picker.reset();

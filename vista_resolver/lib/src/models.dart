@@ -194,11 +194,15 @@ class Movie {
     this.plot = '',
     this.added,
     this.genre = '',
+    this.tmdbId,
   });
 
   final String id;
   final String title;
   final String url;
+
+  /// ID TMDB, se il pannello lo fornisce (abbinamento esatto).
+  final int? tmdbId;
   final String poster;
   final String group;
   final int? year;
@@ -286,7 +290,11 @@ class Series {
     this.added,
     this.genre = '',
     this.backdrop = '',
+    this.tmdbId,
   });
+
+  /// ID TMDB, se il pannello lo fornisce.
+  final int? tmdbId;
 
   final String id;
   final String title;
@@ -314,6 +322,7 @@ class Series {
         added: added,
         genre: genre,
         backdrop: backdrop,
+        tmdbId: tmdbId,
       );
 }
 

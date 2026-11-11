@@ -92,7 +92,33 @@ class UserStore extends ChangeNotifier {
   final _favorites = <String>{};
   final _progress = <String, WatchProgress>{};
   final _recent = <String>[]; // chiavi dei canali, il più recente per primo
+  final _services = <int>[]; // servizi di streaming scelti (id TMDB)
+  final _saved = <String, SavedTitle>{}; // titoli TMDB in "La mia lista"
   Timer? _saveTimer;
+
+  /// I servizi di streaming dell'utente (id dei provider TMDB/JustWatch).
+  List<int> get services => List.unmodifiable(_services);
+
+  void setServices(Iterable<int> ids) {
+    _services
+      ..clear()
+      ..addAll(ids);
+    _changed();
+  }
+
+  /// Dati per mostrare un titolo TMDB salvato in "La mia lista".
+  SavedTitle? savedTitle(String key) => _saved[key];
+
+  /// Aggiunge o toglie un titolo TMDB da "La mia lista".
+  void toggleSaved(SavedTitle t) {
+    if (_favorites.remove(t.key)) {
+      _saved.remove(t.key);
+    } else {
+      _favorites.add(t.key);
+      _saved[t.key] = t;
+    }
+    _changed();
+  }
 
   /// Canali, film e serie preferiti (per film e serie è "La mia lista").
   Set<String> get favorites => Set.unmodifiable(_favorites);
@@ -139,6 +165,17 @@ class UserStore extends ChangeNotifier {
           for (final x in (j['recent'] as List? ?? const []))
             if (x is String) x,
         ]);
+      _services
+        ..clear()
+        ..addAll([
+          for (final x in (j['services'] as List? ?? const []))
+            if (x is int) x,
+        ]);
+      _saved.clear();
+      for (final x in (j['saved'] as List? ?? const [])) {
+        final t = SavedTitle.fromJson(x);
+        if (t != null) _saved[t.key] = t;
+      }
       _progress.clear();
       for (final x in (j['progress'] as List? ?? const [])) {
         final p = WatchProgress.fromJson(x);
@@ -203,6 +240,8 @@ class UserStore extends ChangeNotifier {
       'v': 1,
       'fav': _favorites.toList(),
       'recent': _recent,
+      'services': _services,
+      'saved': [for (final t in _saved.values) t.toJson()],
       'progress': [for (final p in _progress.values) p.toJson()],
     });
     try {
@@ -219,5 +258,38 @@ class UserStore extends ChangeNotifier {
   void dispose() {
     _saveTimer?.cancel();
     super.dispose();
+  }
+}
+
+/// Un titolo TMDB salvato in "La mia lista" (quanto basta per mostrarlo).
+class SavedTitle {
+  const SavedTitle({
+    required this.key,
+    required this.title,
+    this.poster = '',
+    this.year,
+  });
+
+  /// `tm:movie:603` / `tm:tv:5920`.
+  final String key;
+  final String title;
+  final String poster;
+  final int? year;
+
+  Map<String, dynamic> toJson() => {
+    'k': key,
+    't': title,
+    if (poster.isNotEmpty) 'p': poster,
+    if (year != null) 'y': year,
+  };
+
+  static SavedTitle? fromJson(Object? j) {
+    if (j is! Map || j['k'] is! String) return null;
+    return SavedTitle(
+      key: j['k'] as String,
+      title: j['t'] as String? ?? '',
+      poster: j['p'] as String? ?? '',
+      year: j['y'] as int?,
+    );
   }
 }

@@ -6,6 +6,7 @@ import '../app_scope.dart';
 import '../data/source_store.dart';
 import '../theme.dart';
 import 'catalog_screen.dart';
+import 'discover_screen.dart';
 import 'home_screen.dart';
 import 'live_screen.dart';
 import 'search_screen.dart';
@@ -15,6 +16,7 @@ import 'settings_screen.dart';
 enum Destination {
   search('Cerca', Icons.search_rounded),
   home('Home', Icons.home_rounded),
+  discover('Scopri', Icons.explore_rounded),
   live('TV in diretta', Icons.live_tv_rounded),
   movies('Film', Icons.movie_rounded),
   series('Serie TV', Icons.video_library_rounded),
@@ -93,6 +95,7 @@ class _AppShellState extends State<AppShell> {
   List<Destination> get _destinations => [
     Destination.search,
     Destination.home,
+    Destination.discover,
     if (_catalog.live.channels.isNotEmpty) Destination.live,
     if (_catalog.movies.isNotEmpty) Destination.movies,
     if (_catalog.series.isNotEmpty) Destination.series,
@@ -214,6 +217,7 @@ class _AppShellState extends State<AppShell> {
 
   Widget _screen(Destination d) => switch (d) {
     Destination.home => const HomeScreen(),
+    Destination.discover => const DiscoverScreen(),
     Destination.live => const LiveScreen(),
     Destination.movies => const CatalogScreen(kind: CatalogKind.movies),
     Destination.series => const CatalogScreen(kind: CatalogKind.series),

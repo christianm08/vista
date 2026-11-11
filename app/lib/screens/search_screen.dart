@@ -10,6 +10,7 @@ import '../widgets/channel_logo.dart';
 import '../widgets/content_row.dart';
 import '../widgets/epg_guide.dart' show hhmm;
 import '../widgets/poster_card.dart';
+import '../widgets/tmdb_row.dart';
 import '../widgets/tv_text_field.dart';
 import 'home_screen.dart' show toggleMyList;
 import 'shell.dart';
@@ -181,10 +182,18 @@ class _SearchScreenState extends State<SearchScreen> {
         if (_matches(_seriesText[i], tokens)) c.series[i],
     ].take(60).toList();
 
+    final online = app.tmdb.ready
+        ? TmdbRow(
+            key: ValueKey('tmdb-search-$_q'),
+            title: 'Sui servizi di streaming',
+            load: () async => (await app.tmdb.search(_q)).results,
+          )
+        : null;
     if (channels.isEmpty &&
         programmes.isEmpty &&
         movies.isEmpty &&
-        series.isEmpty) {
+        series.isEmpty &&
+        online == null) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: EmptyState(
@@ -286,6 +295,7 @@ class _SearchScreenState extends State<SearchScreen> {
               );
             },
           ),
+        ?online,
       ],
     );
   }

@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../app_scope.dart';
 import '../data/source_store.dart';
 import '../data/user_store.dart';
+import '../player/options_panel.dart';
 import '../player/video.dart';
 import '../theme.dart';
 
@@ -192,78 +193,20 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
     _player.open(Media(_item.url, start: _item.startAt));
   }
 
-  /// Audio e sottotitoli: un pannello con le tracce del file.
-  Future<void> _openTracks() async {
-    _overlayTimer?.cancel();
-    final audio = [
-      for (final a in _tracks.audio)
-        if (a.id != 'no') a,
-    ];
-    final subs = _tracks.subtitle;
-    String label(String id, String? title, String? language, String fallback) {
-      final parts = [
-        if (language != null && language.isNotEmpty) language.toUpperCase(),
-        if (title != null && title.isNotEmpty) title,
-      ];
-      if (id == 'auto') return 'Automatico';
-      if (id == 'no') return 'Disattivati';
-      return parts.isEmpty ? fallback : parts.join(' · ');
-    }
+  /// Menu del player: qualità video, audio, sottotitoli.
+  bool _options = false;
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 460),
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            shrinkWrap: true,
-            children: [
-              const _TrackHeader('Audio'),
-              if (audio.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'Una sola traccia',
-                    style: TextStyle(color: VistaColors.textTertiary),
-                  ),
-                ),
-              for (final (i, a) in audio.indexed)
-                _TrackTile(
-                  label: label(a.id, a.title, a.language, 'Traccia ${i + 1}'),
-                  selected: _track.audio.id == a.id,
-                  autofocus: _track.audio.id == a.id,
-                  onTap: () {
-                    _player.setAudioTrack(a);
-                    Navigator.pop(ctx);
-                  },
-                ),
-              const SizedBox(height: 16),
-              const _TrackHeader('Sottotitoli'),
-              for (final (i, s) in subs.indexed)
-                _TrackTile(
-                  label: label(
-                    s.id,
-                    s.title,
-                    s.language,
-                    'Sottotitoli ${i + 1}',
-                  ),
-                  selected: _track.subtitle.id == s.id,
-                  onTap: () {
-                    _player.setSubtitleTrack(s);
-                    Navigator.pop(ctx);
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (mounted) _showOverlay(autoHide: _playing);
+  void _openTracks() {
+    _overlayTimer?.cancel();
+    setState(() {
+      _options = true;
+      _overlay = false;
+    });
+  }
+
+  void _closeOptions() {
+    setState(() => _options = false);
+    _focus.requestFocus();
   }
 
   void _showOverlay({bool autoHide = true}) {
@@ -310,6 +253,7 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
       _repeat = 0;
       return KeyEventResult.ignored;
     }
+    if (_options) return KeyEventResult.ignored;
     final k = e.logicalKey;
     if (k == LogicalKeyboardKey.escape) {
       if (e is KeyDownEvent) Navigator.of(context).maybePop();
@@ -357,52 +301,71 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Focus(
-        focusNode: _focus,
-        autofocus: true,
-        onKeyEvent: _onKey,
-        // Col mouse basta muoversi sul video per vedere i controlli.
-        child: MouseRegion(
-          onHover: (_) {
-            if (!_overlay) _showOverlay(autoHide: _playing);
-          },
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _overlay
-                ? setState(() => _overlay = false)
-                : _showOverlay(autoHide: _playing),
-            onDoubleTapDown: (d) {
-              final w = MediaQuery.sizeOf(context).width;
-              _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
+    return PopScope(
+      canPop: !_options,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _options) _closeOptions();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Focus(
+          focusNode: _focus,
+          autofocus: true,
+          onKeyEvent: _onKey,
+          // Col mouse basta muoversi sul video per vedere i controlli.
+          child: MouseRegion(
+            onHover: (_) {
+              if (!_overlay) _showOverlay(autoHide: _playing);
             },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Video(controller: _video, controls: NoVideoControls),
-                if (_buffering && _error == null)
-                  const Center(child: CircularProgressIndicator()),
-                if (_error != null) _message(_error!),
-                AnimatedOpacity(
-                  opacity: _overlay ? 1 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: IgnorePointer(
-                    ignoring: !_overlay,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _controls(),
-                        if (!Device.isTv)
-                          const Align(
-                            alignment: Alignment.topLeft,
-                            child: PlayerBackButton(),
-                          ),
-                      ],
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _overlay
+                  ? setState(() => _overlay = false)
+                  : _showOverlay(autoHide: _playing),
+              onDoubleTapDown: (d) {
+                final w = MediaQuery.sizeOf(context).width;
+                _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
+              },
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Video(controller: _video, controls: NoVideoControls),
+                  if (_buffering && _error == null)
+                    const Center(child: CircularProgressIndicator()),
+                  if (_error != null) _message(_error!),
+                  AnimatedOpacity(
+                    opacity: _overlay ? 1 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: IgnorePointer(
+                      ignoring: !_overlay,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _controls(),
+                          if (!Device.isTv)
+                            const Align(
+                              alignment: Alignment.topLeft,
+                              child: PlayerBackButton(),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  PlayerOptionsPanel(
+                    open: _options,
+                    title: _item.title,
+                    sections: _options
+                        ? trackSections(
+                            _player,
+                            _tracks,
+                            _track,
+                            onPicked: _closeOptions,
+                          )
+                        : const [],
+                    onClose: _closeOptions,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -571,52 +534,6 @@ class _SeekBar extends StatelessWidget {
       },
     );
   }
-}
-
-class _TrackHeader extends StatelessWidget {
-  const _TrackHeader(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-    child: Text(
-      text,
-      style: Theme.of(context).textTheme.titleMedium
-          ?.copyWith(fontWeight: FontWeight.w800),
-    ),
-  );
-}
-
-class _TrackTile extends StatelessWidget {
-  const _TrackTile({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.autofocus = false,
-  });
-  final String label;
-  final bool selected;
-  final bool autofocus;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 4),
-    child: ListTile(
-      autofocus: autofocus,
-      dense: true,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      focusColor: VistaColors.glassActive,
-      hoverColor: VistaColors.glassHigh,
-      leading: Icon(
-        selected ? Icons.radio_button_checked : Icons.radio_button_off,
-        color: selected ? VistaColors.accent : VistaColors.textTertiary,
-      ),
-      title: Text(label),
-      onTap: onTap,
-    ),
-  );
 }
 
 /// Freccia "Indietro" per mouse e tocco (su TV c'è il tasto del telecomando).

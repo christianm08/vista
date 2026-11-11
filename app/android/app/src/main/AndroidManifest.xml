@@ -50,5 +50,21 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Aprire i servizi di streaming: link web e app installate. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <package android:name="com.netflix.ninja"/>
+        <package android:name="com.netflix.mediaclient"/>
+        <package android:name="com.amazon.amazonvideo.livingroom"/>
+        <package android:name="com.amazon.avod.thirdpartyclient"/>
+        <package android:name="com.disney.disneyplus"/>
+        <package android:name="com.google.android.youtube.tv"/>
+        <package android:name="com.google.android.youtube"/>
+        <package android:name="com.apple.atve.androidtv.appletv"/>
+        <package android:name="com.apple.atve.android.appletv"/>
+        <package android:name="com.plexapp.android"/>
+        <package android:name="tv.pluto.android"/>
     </queries>
 </manifest>

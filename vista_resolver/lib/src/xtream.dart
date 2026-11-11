@@ -345,6 +345,7 @@ Catalog buildXtreamCatalog(
       plot: _str(s['plot']),
       added: _epoch(s['added']),
       genre: _str(s['genre']).trim(),
+      tmdbId: _positive(s['tmdb'] ?? s['tmdb_id']),
     ));
   }
 
@@ -364,6 +365,7 @@ Catalog buildXtreamCatalog(
       added: _epoch(s['last_modified']),
       genre: _str(s['genre']).trim(),
       backdrop: _firstImage(s['backdrop_path']),
+      tmdbId: _positive(s['tmdb'] ?? s['tmdb_id']),
     ));
   }
 
@@ -464,6 +466,11 @@ int? _int(Object? v) {
   }
   if (v is bool) return v ? 1 : 0;
   return null;
+}
+
+int? _positive(Object? v) {
+  final n = _int(v);
+  return n == null || n <= 0 ? null : n;
 }
 
 /// Secondi Unix (come numero o stringa) → data; `null` se mancante o assurda.

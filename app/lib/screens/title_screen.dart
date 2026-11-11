@@ -5,6 +5,7 @@ import '../app_scope.dart';
 import '../data/source_store.dart';
 import '../data/user_store.dart';
 import '../theme.dart';
+import '../widgets/availability.dart';
 import '../widgets/focus_card.dart';
 import '../widgets/poster_card.dart';
 
@@ -29,6 +30,9 @@ class TitleScreen extends StatefulWidget {
 
 class _TitleScreenState extends State<TitleScreen> {
   TitleDetails _details = TitleDetails.empty;
+
+  /// Lo stesso titolo su TMDB: dati mancanti, cast e altri servizi.
+  TmdbDetails? _tmdb;
   List<Episode>? _episodes;
   String? _error;
   int? _season;
@@ -36,12 +40,18 @@ class _TitleScreenState extends State<TitleScreen> {
 
   bool get _isMovie => widget.movie != null;
   String get _title => widget.movie?.title ?? widget.series!.title;
-  String get _poster => _details.poster.isNotEmpty
-      ? _details.poster
-      : (widget.movie?.poster ?? widget.series!.poster);
-  String get _backdrop => _details.backdrop.isNotEmpty
-      ? _details.backdrop
-      : (widget.series?.backdrop ?? '');
+  String get _poster {
+    if (_details.poster.isNotEmpty) return _details.poster;
+    final own = widget.movie?.poster ?? widget.series!.poster;
+    return own.isNotEmpty ? own : (_tmdb?.title.poster ?? '');
+  }
+
+  String get _backdrop {
+    if (_details.backdrop.isNotEmpty) return _details.backdrop;
+    final own = widget.series?.backdrop ?? '';
+    return own.isNotEmpty ? own : (_tmdb?.title.backdrop ?? '');
+  }
+
   String get _key => _isMovie
       ? UserKey.movie(widget.movie!.id)
       : UserKey.series(widget.series!.id);
@@ -50,6 +60,24 @@ class _TitleScreenState extends State<TitleScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadTmdb();
+  }
+
+  /// Cerca il titolo su TMDB (se collegato). Gli errori non disturbano: la
+  /// scheda resta con i dati della lista.
+  Future<void> _loadTmdb() async {
+    final tmdb = AppScope.of(context).tmdb;
+    if (!tmdb.ready) return;
+    try {
+      final t = _isMovie
+          ? await tmdb.matchMovie(widget.movie!)
+          : await tmdb.matchSeries(widget.series!);
+      if (t == null) return;
+      final d = await tmdb.details(t.type, t.id);
+      if (mounted) setState(() => _tmdb = d);
+    } catch (_) {
+      // nessun dato TMDB
+    }
   }
 
   Future<void> _load() async {
@@ -163,7 +191,11 @@ class _TitleScreenState extends State<TitleScreen> {
           right: 0,
           top: 0,
           height: heroHeight,
-          child: _Backdrop(backdrop: _backdrop, poster: _poster, title: _title),
+          child: TitleBackdrop(
+            backdrop: _backdrop,
+            poster: _poster,
+            title: _title,
+          ),
         ),
         CustomScrollView(
           slivers: [
@@ -201,7 +233,24 @@ class _TitleScreenState extends State<TitleScreen> {
                     : _headWide(context, layout, user),
               ),
             ),
+            if (_tmdb case final d?) ...[
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(g, 26, g, 0),
+                sliver: SliverToBoxAdapter(
+                  child: AvailabilitySection(
+                    title: d.title.title,
+                    availability: d.availability,
+                    heading: 'Disponibile anche su',
+                  ),
+                ),
+              ),
+            ],
             if (!_isMovie) ..._episodesSlivers(context, layout, user),
+            if (_tmdb case final d? when d.cast.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.only(top: 26),
+                sliver: SliverToBoxAdapter(child: CastRow(d.cast)),
+              ),
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
         ),
@@ -215,9 +264,12 @@ class _TitleScreenState extends State<TitleScreen> {
     final m = widget.movie;
     final s = widget.series;
     final year = m?.year ?? s?.year;
-    final genre = _details.genre.isNotEmpty
+    final own = _details.genre.isNotEmpty
         ? _details.genre
         : (m?.genre ?? s?.genre ?? '');
+    final genre = own.isNotEmpty
+        ? own
+        : (_tmdb?.genres.take(3).join(', ') ?? '');
     final rating = _details.rating.isNotEmpty
         ? _details.rating
         : (m?.rating ?? s?.rating ?? '');
@@ -227,8 +279,8 @@ class _TitleScreenState extends State<TitleScreen> {
     return metaLine([
       if (year != null) '$year',
       genre.isNotEmpty ? genre : (m?.group ?? s?.group),
-      if (_isMovie && _details.duration != null)
-        formatDuration(_details.duration!),
+      if (_isMovie && (_details.duration ?? _tmdb?.runtime) != null)
+        formatDuration((_details.duration ?? _tmdb?.runtime)!),
       ?seasons,
       if (rating.isNotEmpty) '★ $rating',
     ]);
@@ -236,7 +288,8 @@ class _TitleScreenState extends State<TitleScreen> {
 
   String get _plot {
     if (_details.plot.isNotEmpty) return _details.plot;
-    return widget.movie?.plot ?? widget.series?.plot ?? '';
+    final own = widget.movie?.plot ?? widget.series?.plot ?? '';
+    return own.isNotEmpty ? own : (_tmdb?.title.overview ?? '');
   }
 
   Widget _headWide(BuildContext context, VistaLayout layout, UserStore user) {
@@ -524,8 +577,9 @@ class _TitleScreenState extends State<TitleScreen> {
   }
 }
 
-class _Backdrop extends StatelessWidget {
-  const _Backdrop({
+class TitleBackdrop extends StatelessWidget {
+  const TitleBackdrop({
+    super.key,
     required this.backdrop,
     required this.poster,
     required this.title,

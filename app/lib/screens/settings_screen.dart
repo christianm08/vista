@@ -7,6 +7,7 @@ import '../data/source_store.dart';
 import '../theme.dart';
 import '../widgets/focus_card.dart';
 import 'channel_settings_screen.dart';
+import 'services_screen.dart';
 import 'shell.dart';
 
 /// Impostazioni: fonte, canali, guida TV, dati personali, informazioni.
@@ -156,6 +157,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Cambia fonte',
                   subtitle: 'Aggiungi un\'altra lista M3U o un altro account.',
                   onTap: _changeSource,
+                ),
+                const _Header('Servizi di streaming'),
+                ListenableBuilder(
+                  listenable: Listenable.merge([app.tmdb.client, app.user]),
+                  builder: (context, _) => _Tile(
+                    icon: Icons.subscriptions_rounded,
+                    title: 'I miei servizi',
+                    subtitle: !app.tmdb.ready
+                        ? 'Collega TMDB e scegli Netflix, Prime Video, Disney+, RaiPlay…'
+                        : (app.user.services.isEmpty
+                              ? 'Nessun servizio scelto.'
+                              : '${app.user.services.length} servizi scelti · TMDB collegato'),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ServicesScreen()),
+                    ),
+                  ),
                 ),
                 const _Header('TV in diretta'),
                 _Tile(

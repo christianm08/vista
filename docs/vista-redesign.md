@@ -67,3 +67,23 @@ seria** (TiviMate) e **un catalogo dei servizi legali** (JustWatch). È lo spazi
 4. **Aspetto**: 12 accenti e 3 sfondi, temi per lista.
 5. **Samsung TV**: Flutter for Tizen (SDK 2026, TV dal 2021); player nativo AVPlay
    al posto di media_kit.
+
+## Fase 2 — servizi di streaming e TV avanzata (fatta, novembre 2026)
+
+- **Scopri** (stile JustWatch/Plex): cataloghi dei servizi scelti in "I miei servizi"
+  (TMDB `discover` con `watch_region=IT`); righe Popolari, Novità, I più votati, una per
+  servizio e Di tendenza; elenco completo a pagine.
+- **Un titolo, una scheda**: "Disponibile su:" elenca ogni servizio una volta sola (incluso,
+  gratis, noleggio, acquisto), prima i servizi dell'utente; ogni voce apre l'app (su TV per
+  nome del pacchetto) o la ricerca del servizio; "Tutte le opzioni" apre la pagina JustWatch.
+  TMDB non dà link diretti ai contenuti.
+- **Lista IPTV ↔ TMDB**: se il titolo c'è anche nella lista, compare "La tua lista IPTV" in
+  cima (abbinamento per ID TMDB del pannello, altrimenti titolo + anno). Le schede della
+  lista mostrano "Disponibile anche su", cast e i dati mancanti presi da TMDB.
+- Dati completi da TMDB: generi, durata, stagioni ed episodi, cast, regia/ideatori,
+  trailer YouTube, link IMDb. Chiave TMDB dell'utente nel portachiavi.
+- Ricerca anche sui servizi; Home con "Popolari sui tuoi servizi"; La mia lista unica.
+- **Player live**: menu interno (tasto Menu o pulsante nella barra) con flusso della lista,
+  qualità video HLS, audio, sottotitoli, preferito e **Multiview** fino a 4 canali (audio
+  sul riquadro col focus). Stesso menu nei film/episodi.
+- Attribuzioni obbligatorie: TMDB (Impostazioni → I miei servizi) e JustWatch (schede e Scopri).

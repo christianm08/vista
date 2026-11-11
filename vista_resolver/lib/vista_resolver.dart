@@ -13,3 +13,4 @@ export 'src/models.dart';
 export 'src/normalize.dart';
 export 'src/resolver.dart';
 export 'src/xtream.dart';
+export 'src/tmdb.dart';

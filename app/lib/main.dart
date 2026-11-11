@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'app_scope.dart';
 import 'data/channel_logos.dart';
 import 'data/epg_store.dart';
 import 'data/source_store.dart';
+import 'data/tmdb_store.dart';
 import 'data/user_store.dart';
 import 'screens/import_screen.dart';
 import 'screens/shell.dart';
@@ -15,13 +17,15 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await Future.wait([ChannelLogos.init(), Device.init()]);
   final user = UserStore();
-  await user.load();
-  runApp(VistaApp(user: user));
+  final tmdb = TmdbStore();
+  await Future.wait([user.load(), tmdb.init()]);
+  runApp(VistaApp(user: user, tmdb: tmdb));
 }
 
 class VistaApp extends StatefulWidget {
-  const VistaApp({super.key, required this.user});
+  const VistaApp({super.key, required this.user, required this.tmdb});
   final UserStore user;
+  final TmdbStore tmdb;
 
   @override
   State<VistaApp> createState() => _VistaAppState();
@@ -30,6 +34,7 @@ class VistaApp extends StatefulWidget {
 class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
   final _store = SourceStore();
   late final _epg = EpgStore(_store);
+  final _nav = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -64,12 +69,22 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
       store: _store,
       epg: _epg,
       user: widget.user,
+      tmdb: widget.tmdb,
       child: MaterialApp(
         title: 'Vista',
         debugShowCheckedModeBanner: false,
         theme: buildVistaTheme(),
         scrollBehavior: const VistaScrollBehavior(),
-        builder: (context, child) => VistaBackground(child: child!),
+        navigatorKey: _nav,
+        // Su PC Esc torna indietro in tutte le schermate (la shell e i
+        // player lo gestiscono prima a modo loro).
+        builder: (context, child) => CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): () =>
+                _nav.currentState?.maybePop(),
+          },
+          child: VistaBackground(child: child!),
+        ),
         home: _Root(store: _store),
       ),
     );

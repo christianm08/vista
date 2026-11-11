@@ -10,6 +10,7 @@ import '../widgets/channel_logo.dart';
 import '../widgets/content_row.dart';
 import '../widgets/epg_guide.dart' show hhmm;
 import '../widgets/poster_card.dart';
+import '../widgets/tmdb_row.dart';
 import 'shell.dart';
 
 /// Un titolo in evidenza nel riquadro grande della Home.
@@ -159,7 +160,9 @@ class _HomeScreenState extends State<HomeScreen> {
         if (k.startsWith('mv:') && moviesById[k.substring(3)] != null)
           moviesById[k.substring(3)]!
         else if (k.startsWith('sr:') && seriesById[k.substring(3)] != null)
-          seriesById[k.substring(3)]!,
+          seriesById[k.substring(3)]!
+        else if (k.startsWith('tm:') && user.savedTitle(k) != null)
+          user.savedTitle(k)!,
     ];
     final resume = user.continueWatching;
     // In onda ora: prima i preferiti e i recenti, poi gli altri con la guida.
@@ -212,6 +215,22 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             );
           },
+        ),
+      if (app.tmdb.ready && user.services.isNotEmpty)
+        TmdbRow(
+          key: ValueKey('home-svc-${user.services.join(',')}'),
+          title: 'Popolari sui tuoi servizi',
+          load: () async {
+            final r = await Future.wait([
+              app.tmdb.discover(MediaType.movie, providers: user.services),
+              app.tmdb.discover(MediaType.tv, providers: user.services),
+            ]);
+            return mergeByPopularity(
+              r[0].results,
+              r[1].results,
+            ).take(24).toList();
+          },
+          onSeeAll: () => ShellController.of(context).go(Destination.discover),
         ),
       if (favChannels.isNotEmpty) channelRow('Canali preferiti', favChannels),
       if (recent.isNotEmpty) channelRow('Visti di recente', recent),
@@ -688,6 +707,25 @@ class _HomeScreenState extends State<HomeScreen> {
           favorite: user.isFavorite(key),
           onTap: () => Nav.openSeries(context, s),
           onLongPress: () => toggleMyList(context, key, s.title),
+        );
+      case SavedTitle t:
+        // Titolo dei servizi di streaming: `tm:movie:603`.
+        final parts = t.key.split(':');
+        final tmdb = TmdbTitle(
+          type: parts[1] == 'tv' ? MediaType.tv : MediaType.movie,
+          id: int.tryParse(parts[2]) ?? 0,
+          title: t.title,
+        );
+        return PosterCard(
+          title: t.title,
+          image: t.poster,
+          caption: metaLine([
+            if (t.year != null) '${t.year}',
+            parts[1] == 'tv' ? 'Serie' : 'Film',
+          ]),
+          favorite: true,
+          onTap: () => Nav.openTmdb(context, tmdb),
+          onLongPress: () => toggleSavedTitle(context, tmdb),
         );
     }
     return const SizedBox.shrink();

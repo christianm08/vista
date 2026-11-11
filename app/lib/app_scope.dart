@@ -3,9 +3,11 @@ import 'package:vista_resolver/vista_resolver.dart';
 
 import 'data/epg_store.dart';
 import 'data/source_store.dart';
+import 'data/tmdb_store.dart';
 import 'data/user_store.dart';
 import 'screens/player_screen.dart';
 import 'screens/title_screen.dart';
+import 'screens/tmdb_title_screen.dart';
 import 'screens/vod_player_screen.dart';
 
 /// I servizi dell'app, raggiungibili da ogni schermata (anche dai player,
@@ -16,12 +18,14 @@ class AppScope extends InheritedWidget {
     required this.store,
     required this.epg,
     required this.user,
+    required this.tmdb,
     required super.child,
   });
 
   final SourceStore store;
   final EpgStore epg;
   final UserStore user;
+  final TmdbStore tmdb;
 
   static AppScope of(BuildContext context) {
     final s = context.getInheritedWidgetOfExactType<AppScope>();
@@ -34,7 +38,10 @@ class AppScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(AppScope old) =>
-      store != old.store || epg != old.epg || user != old.user;
+      store != old.store ||
+      epg != old.epg ||
+      user != old.user ||
+      tmdb != old.tmdb;
 }
 
 /// Azioni comuni: aprire una scheda, guardare un canale o un titolo.
@@ -47,6 +54,10 @@ abstract final class Nav {
 
   static Future<void> openSeries(BuildContext context, Series s) =>
       _push(context, TitleScreen.series(s));
+
+  /// Scheda di un titolo dal catalogo dei servizi di streaming.
+  static Future<void> openTmdb(BuildContext context, TmdbTitle t) =>
+      _push(context, TmdbTitleScreen(title: t));
 
   static Future<void> playChannel(
     BuildContext context,
