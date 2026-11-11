@@ -190,6 +190,9 @@ void main() {
       expect(sameTitle('Matrix', null, matrix), isTrue);
       expect(sameTitle('Matrix', 2003, matrix), isFalse);
       expect(sameTitle('Matrix Reloaded', 2003, matrix), isFalse);
+      const noDate = TmdbTitle(type: MediaType.movie, id: 1, title: 'Matrix');
+      expect(sameTitle('Matrix', 1999, noDate), isFalse);
+      expect(sameTitle('Matrix', null, noDate), isTrue);
       expect(bestMatch('matrix', 1999, [matrix])?.id, 603);
     });
 
@@ -207,6 +210,44 @@ void main() {
       );
       expect(c.movies.map((m) => m.tmdbId), [603, null]);
       expect(c.series.single.tmdbId, 5920);
+    });
+  });
+
+  group('varianti dei servizi (dati reali TMDB)', () {
+    const netflix = WatchProvider(id: 8, name: 'Netflix', priority: 0);
+    const prime = WatchProvider(id: 119, name: 'Amazon Prime Video', priority: 1);
+    const primeAds = WatchProvider(id: 2100, name: 'Amazon Prime Video with Ads', priority: 87);
+    const hboChannel = WatchProvider(id: 1825, name: 'HBO Max Amazon Channel', priority: 85);
+    const hbo = WatchProvider(id: 1899, name: 'HBO Max', priority: 86);
+
+    test('The Mentalist: ogni servizio una volta', () {
+      final a = Availability(offers: {
+        OfferKind.flatrate: [netflix, prime, hboChannel, hbo, primeAds],
+      });
+      expect(a.distinct.map((e) => e.$1.name), ['Netflix', 'Amazon Prime Video', 'HBO Max']);
+    });
+
+    test('la variante inclusa vale per il servizio principale a noleggio', () {
+      final a = Availability(offers: {
+        OfferKind.ads: [primeAds],
+        OfferKind.rent: [prime],
+      });
+      expect(a.distinct.map((e) => (e.$1.name, e.$2)), [('Amazon Prime Video', OfferKind.ads)]);
+    });
+
+    test('solo servizi principali; scelta che include le varianti', () {
+      final all = [netflix, prime, primeAds, hboChannel, hbo];
+      expect(mainProviders(all).map((p) => p.id), [8, 119, 1899]);
+      expect(withVariants([1899], all), {1899, 1825});
+      expect(withVariants([119], all), {119, 2100});
+    });
+
+    test('nomi reali: Rai Play, Disney Plus, canali Amazon', () {
+      expect(providerSearchUrl('Rai Play', 'x'), contains('raiplay.it'));
+      expect(providerSearchUrl('Disney Plus', 'x'), contains('disneyplus.com'));
+      expect(providerSearchUrl('HBO Max', 'x'), contains('hbomax.com'));
+      expect(providerSearchUrl('HBO Max Amazon Channel', 'x'), contains('primevideo.com'));
+      expect(providerSearchUrl('Now TV', 'x'), contains('nowtv.it'));
     });
   });
 

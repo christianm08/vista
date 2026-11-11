@@ -35,6 +35,16 @@ class _TmdbTitleScreenState extends State<TmdbTitleScreen> {
     _load();
   }
 
+  final _primaryFocus = FocusNode(debugLabel: 'azione principale');
+  final _listFocus = FocusNode(debugLabel: 'la mia lista');
+
+  @override
+  void dispose() {
+    _primaryFocus.dispose();
+    _listFocus.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     setState(() => _error = null);
     try {
@@ -44,6 +54,13 @@ class _TmdbTitleScreenState extends State<TmdbTitleScreen> {
       setState(() {
         _details = d;
         if (d.seasons.isNotEmpty) _pickSeason(d.seasons.first.number);
+      });
+      // Durante il caricamento il focus era su "La mia lista" (l'unico
+      // pulsante): ora passa all'azione principale, se c'è.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _listFocus.hasFocus && _primaryFocus.context != null) {
+          _primaryFocus.requestFocus();
+        }
       });
     } on TmdbException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -258,6 +275,8 @@ class _TmdbTitleScreenState extends State<TmdbTitleScreen> {
           children: [
             if (iptv != null)
               FilledButton.icon(
+                key: const ValueKey('iptv'),
+                focusNode: _primaryFocus,
                 autofocus: true,
                 onPressed: iptv.onTap,
                 icon: const Icon(Icons.play_arrow_rounded),
@@ -265,6 +284,8 @@ class _TmdbTitleScreenState extends State<TmdbTitleScreen> {
               )
             else if (best != null)
               FilledButton.icon(
+                key: const ValueKey('service'),
+                focusNode: _primaryFocus,
                 autofocus: true,
                 onPressed: () => openService(
                   best.$1,
@@ -278,6 +299,7 @@ class _TmdbTitleScreenState extends State<TmdbTitleScreen> {
               ),
             if (d != null && d.trailerKey.isNotEmpty)
               OutlinedButton.icon(
+                key: const ValueKey('trailer'),
                 autofocus: iptv == null && best == null,
                 onPressed: () =>
                     openLink('https://www.youtube.com/watch?v=${d.trailerKey}'),
@@ -285,6 +307,8 @@ class _TmdbTitleScreenState extends State<TmdbTitleScreen> {
                 label: const Text('Trailer'),
               ),
             OutlinedButton.icon(
+              key: const ValueKey('list'),
+              focusNode: _listFocus,
               autofocus:
                   iptv == null &&
                   best == null &&
@@ -298,6 +322,7 @@ class _TmdbTitleScreenState extends State<TmdbTitleScreen> {
             ),
             if (d != null && d.imdbUrl.isNotEmpty)
               OutlinedButton(
+                key: const ValueKey('imdb'),
                 onPressed: () => openLink(d.imdbUrl),
                 child: const Text('IMDb'),
               ),

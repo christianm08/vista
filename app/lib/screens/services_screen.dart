@@ -113,7 +113,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                           child: Center(child: CircularProgressIndicator()),
                         );
                       }
-                      return _grid(context, layout, snap.data!);
+                      return _grid(context, layout, mainProviders(snap.data!));
                     },
                   ),
                 ),

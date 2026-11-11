@@ -41,6 +41,9 @@ class _TitleScreenState extends State<TitleScreen> {
   bool get _isMovie => widget.movie != null;
   String get _title => widget.movie?.title ?? widget.series!.title;
   String get _poster {
+    // Le locandine TMDB sono affidabili; quelle dei pannelli spesso no.
+    final tm = _tmdb?.title.poster ?? '';
+    if (tm.isNotEmpty) return tm;
     if (_details.poster.isNotEmpty) return _details.poster;
     final own = widget.movie?.poster ?? widget.series!.poster;
     return own.isNotEmpty ? own : (_tmdb?.title.poster ?? '');

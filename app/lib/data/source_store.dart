@@ -133,7 +133,15 @@ class SourceStore {
         prefs = const ChannelPrefs();
       }
     }
-    final raw = await _secure.read(key: _sourceKey);
+    var raw = await _secure.read(key: _sourceKey);
+    // Se la cache c'è ma la lettura torna vuota (visto una volta su Windows
+    // all'avvio), si riprova un attimo dopo prima di chiedere la fonte.
+    if (raw == null &&
+        (await (await _file(_m3uCache)).exists() ||
+            await (await _file(_xtreamCache)).exists())) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      raw = await _secure.read(key: _sourceKey);
+    }
     if (raw == null) return null;
     final source = VistaSource.fromJson(
       jsonDecode(raw) as Map<String, dynamic>,

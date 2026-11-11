@@ -144,13 +144,20 @@ class Availability {
 
   /// Ogni servizio una volta sola, col modo migliore (incluso prima di
   /// gratis, noleggio, acquisto).
+  /// Le varianti ("… with Ads", "… Amazon Channel") spariscono se c'è già il
+  /// servizio principale.
   List<(WatchProvider, OfferKind)> get distinct {
+    final all = [for (final l in offers.values) ...l];
+    final variants = providerVariants(all);
+    final byId = {for (final p in all) p.id: p};
     final seen = <int>{};
     final out = <(WatchProvider, OfferKind)>[];
     for (final kind in OfferKind.values) {
       final list = [...?offers[kind]]..sort((a, b) => a.priority.compareTo(b.priority));
       for (final p in list) {
-        if (seen.add(p.id)) out.add((p, kind));
+        // Una variante vale come il suo servizio principale, se c'è.
+        final shown = byId[variants[p.id]] ?? p;
+        if (seen.add(shown.id)) out.add((shown, kind));
       }
     }
     return out;
@@ -502,7 +509,10 @@ bool sameTitle(String a, int? yearA, TmdbTitle t) {
   final names = {titleMatchKey(t.title), titleMatchKey(t.originalTitle)};
   if (!names.contains(k)) return false;
   final y = t.year;
-  return yearA == null || y == null || (yearA - y).abs() <= 1;
+  // Senza anno nella lista basta il titolo; se la lista ha l'anno, anche
+  // TMDB deve averlo (le schede senza data sono spesso doppioni o bozze).
+  if (yearA == null) return true;
+  return y != null && (yearA - y).abs() <= 1;
 }
 
 /// Il miglior risultato di ricerca per un titolo della lista.
@@ -518,28 +528,37 @@ TmdbTitle? bestMatch(String title, int? year, List<TmdbTitle> results) {
 /// Pagina del servizio dove cercare il titolo. TMDB non dà i link diretti ai
 /// contenuti: si apre la ricerca del servizio (o, se non lo conosciamo, la
 /// pagina JustWatch con tutte le opzioni).
+/// Nome compatto per riconoscere i servizi: "Rai Play" e "RaiPlay",
+/// "Disney Plus" e "Disney+" diventano uguali.
+String _brand(String providerName) => providerName
+    .toLowerCase()
+    .replaceAll('+', 'plus')
+    .replaceAll(RegExp(r'[^a-z0-9]'), '');
+
 String providerSearchUrl(String providerName, String title, {String fallback = ''}) {
   final q = Uri.encodeQueryComponent(title);
-  final n = providerName.toLowerCase();
+  final n = _brand(providerName);
   bool has(String s) => n.contains(s);
-  if (has('netflix')) return 'https://www.netflix.com/search?q=$q';
-  if (has('prime video') || has('amazon video') || n == 'amazon prime video') {
+  // I canali Amazon (es. "HBO Max Amazon Channel") si guardano da Prime Video.
+  if (has('amazonchannel') || has('primevideo') || has('amazonvideo')) {
     return 'https://www.primevideo.com/search/ref=atv_nb_sr?phrase=$q';
   }
+  if (has('netflix')) return 'https://www.netflix.com/search?q=$q';
   if (has('disney')) return 'https://www.disneyplus.com/it-it/search?q=$q';
-  if (has('apple tv')) return 'https://tv.apple.com/it/search?term=$q';
+  if (has('hbomax')) return 'https://play.hbomax.com/search?q=$q';
+  if (has('appletv')) return 'https://tv.apple.com/it/search?term=$q';
   if (has('raiplay')) return 'https://www.raiplay.it/ricerca.html?q=$q';
   if (has('paramount')) return 'https://www.paramountplus.com/it/search/';
   if (has('youtube')) return 'https://www.youtube.com/results?search_query=$q';
-  if (has('google play')) return 'https://play.google.com/store/search?q=$q&c=movies';
+  if (has('googleplay')) return 'https://play.google.com/store/search?q=$q&c=movies';
   if (has('mubi')) return 'https://mubi.com/it/search/films?query=$q';
   if (has('rakuten')) return 'https://www.rakuten.tv/it/search?q=$q';
   if (has('crunchyroll')) return 'https://www.crunchyroll.com/search?q=$q';
   if (has('plex')) return 'https://watch.plex.tv/search?q=$q';
   if (has('pluto')) return 'https://pluto.tv/it/search/details?query=$q';
   if (has('mediaset')) return 'https://mediasetinfinity.mediaset.it/';
-  if (has('now')) return 'https://www.nowtv.it/';
-  if (has('sky go')) return 'https://www.skygo.sky.it/';
+  if (n == 'now' || has('nowtv')) return 'https://www.nowtv.it/';
+  if (has('skygo')) return 'https://www.skygo.sky.it/';
   if (has('timvision')) return 'https://www.timvision.it/';
   if (has('discovery')) return 'https://www.discoveryplus.com/it/';
   if (has('chili')) return 'https://it.chili.com/';
@@ -549,17 +568,50 @@ String providerSearchUrl(String providerName, String title, {String fallback = '
 /// App Android dei servizi principali (telefono e TV), per aprirle anche
 /// dove il link web non basta (le app TV di solito non gestiscono i link).
 List<String> providerAndroidPackages(String providerName) {
-  final n = providerName.toLowerCase();
-  if (n.contains('netflix')) return ['com.netflix.ninja', 'com.netflix.mediaclient'];
-  if (n.contains('prime video') || n.contains('amazon video')) {
+  final n = _brand(providerName);
+  if (n.contains('amazonchannel') || n.contains('primevideo') || n.contains('amazonvideo')) {
     return ['com.amazon.amazonvideo.livingroom', 'com.amazon.avod.thirdpartyclient'];
   }
+  if (n.contains('netflix')) return ['com.netflix.ninja', 'com.netflix.mediaclient'];
   if (n.contains('disney')) return ['com.disney.disneyplus'];
   if (n.contains('youtube')) return ['com.google.android.youtube.tv', 'com.google.android.youtube'];
-  if (n.contains('apple tv')) return ['com.apple.atve.androidtv.appletv', 'com.apple.atve.android.appletv'];
+  if (n.contains('appletv')) return ['com.apple.atve.androidtv.appletv', 'com.apple.atve.android.appletv'];
   if (n.contains('plex')) return ['com.plexapp.android'];
   if (n.contains('pluto')) return ['tv.pluto.android'];
   return const [];
+}
+
+/// Varianti dello stesso servizio ("Amazon Prime Video with Ads", "HBO Max
+/// Amazon Channel"): id della variante → id del servizio principale. Una
+/// variante è un servizio il cui nome inizia col nome di un altro.
+Map<int, int> providerVariants(Iterable<WatchProvider> providers) {
+  final list = providers.toList()..sort((a, b) => a.name.length.compareTo(b.name.length));
+  final out = <int, int>{};
+  for (var i = 0; i < list.length; i++) {
+    final v = list[i];
+    for (var j = 0; j < i; j++) {
+      final base = list[j];
+      if (base.name.length < v.name.length &&
+          v.name.toLowerCase().startsWith('${base.name.toLowerCase()} ')) {
+        out[v.id] = out[base.id] ?? base.id;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/// Solo i servizi principali (senza varianti), per la scelta dell'utente.
+List<WatchProvider> mainProviders(List<WatchProvider> providers) {
+  final variants = providerVariants(providers);
+  return [for (final p in providers) if (!variants.containsKey(p.id)) p];
+}
+
+/// I servizi scelti più le loro varianti (per filtrare i cataloghi).
+Set<int> withVariants(Iterable<int> ids, Iterable<WatchProvider> providers) {
+  final variants = providerVariants(providers);
+  final chosen = ids.toSet();
+  return {...chosen, for (final e in variants.entries) if (chosen.contains(e.value)) e.key};
 }
 
 String _str(Object? v) => v == null ? '' : (v is String ? v : v.toString());

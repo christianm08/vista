@@ -52,8 +52,25 @@ class TmdbStore {
     userKey = key != null && key.isNotEmpty;
     final k = userKey ? key! : _builtInKey;
     if (k.isNotEmpty) client.value = _make(k);
+    await _loadMatches();
+  }
+
+  /// Impronta di chiave e server: le cache su disco valgono solo per loro
+  /// (cambiando chiave o server di prova non restano dati vecchi). FNV-1a,
+  /// stabile tra un avvio e l'altro; la chiave non finisce nel nome del file.
+  String get _tag {
+    final text = '$_base|${client.value?.credential ?? ''}';
+    var h = 0x811c9dc5;
+    for (final c in text.codeUnits) {
+      h = ((h ^ c) * 0x01000193) & 0xffffffff;
+    }
+    return h.toRadixString(16);
+  }
+
+  Future<void> _loadMatches() async {
+    _matches = {};
     try {
-      final f = await _file('tmdb_matches.json');
+      final f = await _file('tmdb_matches_$_tag.json');
       if (await f.exists()) {
         final j = jsonDecode(await f.readAsString());
         if (j is Map) {
@@ -78,6 +95,7 @@ class TmdbStore {
     userKey = true;
     _clear();
     client.value = c;
+    await _loadMatches();
   }
 
   Future<void> removeKey() async {
@@ -85,6 +103,7 @@ class TmdbStore {
     userKey = false;
     _clear();
     client.value = _builtInKey.isEmpty ? null : _make(_builtInKey);
+    await _loadMatches();
   }
 
   void _clear() {
@@ -101,7 +120,7 @@ class TmdbStore {
     final cached = _providers;
     if (cached != null) return cached;
     final c = _need();
-    final f = await _file('tmdb_providers.json');
+    final f = await _file('tmdb_providers_$_tag.json');
     if (await f.exists() &&
         DateTime.now().difference(await f.lastModified()) <
             const Duration(days: 7)) {
@@ -221,7 +240,7 @@ class TmdbStore {
     _saveMatches?.cancel();
     _saveMatches = Timer(const Duration(seconds: 3), () async {
       try {
-        await (await _file('tmdb_matches.json'))
+        await (await _file('tmdb_matches_$_tag.json'))
             .writeAsString(jsonEncode(_matches));
       } catch (_) {}
     });

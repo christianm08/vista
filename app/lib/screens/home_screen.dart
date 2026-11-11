@@ -221,9 +221,10 @@ class _HomeScreenState extends State<HomeScreen> {
           key: ValueKey('home-svc-${user.services.join(',')}'),
           title: 'Popolari sui tuoi servizi',
           load: () async {
+            final ids = withVariants(user.services, await app.tmdb.providers()).toList();
             final r = await Future.wait([
-              app.tmdb.discover(MediaType.movie, providers: user.services),
-              app.tmdb.discover(MediaType.tv, providers: user.services),
+              app.tmdb.discover(MediaType.movie, providers: ids),
+              app.tmdb.discover(MediaType.tv, providers: ids),
             ]);
             return mergeByPopularity(
               r[0].results,

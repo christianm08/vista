@@ -141,7 +141,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         ?all.where((p) => p.id == id).firstOrNull,
     ];
     if (_service != null && !mine.any((p) => p.id == _service)) _service = null;
-    final ids = _ids(app);
+    // I servizi scelti più le loro varianti (es. Prime Video con pubblicità).
+    final ids = withVariants(_ids(app), all).toList();
     final serviceName = _service == null
         ? null
         : mine.firstWhere((p) => p.id == _service).name;
@@ -175,7 +176,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           _row(
             'Su ${s.name}',
             'svc${s.id}',
-            (p) => _discover(tmdb, providers: [s.id], page: p),
+            (p) => _discover(tmdb, providers: withVariants([s.id], all).toList(), page: p),
           ),
       if (_service == null)
         TmdbRow(
