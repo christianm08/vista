@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../app_scope.dart';
 import '../data/source_store.dart';
 import '../data/user_store.dart';
+import '../data/window_mode.dart';
 import '../player/options_panel.dart';
 import '../player/video.dart';
 import '../theme.dart';
@@ -113,7 +113,11 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
       ..add(
         _player.stream.position.listen((p) {
           if (!mounted) return;
-          setState(() => _position = p);
+          // La posizione arriva molte volte al secondo: si ridisegna solo
+          // quando cambia il secondo mostrato (o dopo un salto).
+          final redraw = p.inSeconds != _position.inSeconds;
+          _position = p;
+          if (redraw) setState(() {});
           if (_playing) _saveProgress();
         }),
       )
@@ -256,7 +260,10 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
     if (_options) return KeyEventResult.ignored;
     final k = e.logicalKey;
     if (k == LogicalKeyboardKey.escape) {
-      if (e is KeyDownEvent) Navigator.of(context).maybePop();
+      // A schermo intero Esc prima ne esce, poi torna indietro.
+      if (e is KeyDownEvent && !WindowMode.leaveOnEscape()) {
+        Navigator.of(context).maybePop();
+      }
       return KeyEventResult.handled;
     }
     if (e is KeyRepeatEvent) _repeat++;
@@ -322,14 +329,19 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
               onTap: () => _overlay
                   ? setState(() => _overlay = false)
                   : _showOverlay(autoHide: _playing),
+              // Doppio clic: schermo intero sul PC; al tocco ±10 s.
               onDoubleTapDown: (d) {
+                if (WindowMode.supported) {
+                  WindowMode.toggle();
+                  return;
+                }
                 final w = MediaQuery.sizeOf(context).width;
                 _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
               },
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Video(controller: _video, controls: NoVideoControls),
+                  formattedVideo(_video, _user?.picture ?? PictureFormat.fit),
                   if (_buffering && _error == null)
                     const Center(child: CircularProgressIndicator()),
                   if (_error != null) _message(_error!),
@@ -347,6 +359,10 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
                               alignment: Alignment.topLeft,
                               child: PlayerBackButton(),
                             ),
+                          const Align(
+                            alignment: Alignment.topRight,
+                            child: FullScreenButton(),
+                          ),
                         ],
                       ),
                     ),
@@ -355,12 +371,16 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
                     open: _options,
                     title: _item.title,
                     sections: _options
-                        ? trackSections(
-                            _player,
-                            _tracks,
-                            _track,
-                            onPicked: _closeOptions,
-                          )
+                        ? [
+                            ...trackSections(
+                              _player,
+                              _tracks,
+                              _track,
+                              onPicked: _closeOptions,
+                            ),
+                            if (_user case final u?)
+                              pictureSection(u, onPicked: _closeOptions),
+                          ]
                         : const [],
                     onClose: _closeOptions,
                   ),

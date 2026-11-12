@@ -59,6 +59,18 @@ void main() {
     expect(back.hidden, {'rai 1'});
   });
 
+  test('nascondi e mostra più canali insieme', () {
+    var prefs = const ChannelPrefs()
+        .rename('rai 1', 'Uno')
+        .setHiddenAll(['rai 1', 'rete 4'], true);
+    expect(prefs.hidden, {'rai 1', 'rete 4'});
+    expect(prefs.overrides['rai 1']!.name, 'Uno'); // il resto non cambia
+    prefs = prefs.setHiddenAll(['rete 4', 'canale primo'], true);
+    expect(prefs.hidden, {'rai 1', 'rete 4', 'canale primo'});
+    prefs = prefs.setHiddenAll(['rai 1', 'rete 4', 'sconosciuto'], false);
+    expect(prefs.hidden, {'canale primo'});
+  });
+
   test('JSON andata e ritorno, senza voci vuote', () {
     final prefs = const ChannelPrefs()
         .merge('canale primo', 'rai 1')

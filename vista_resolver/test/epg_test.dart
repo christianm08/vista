@@ -113,6 +113,21 @@ void main() {
     expect(soloVecchia.nowOn(rai1, now: now), isNull);
   });
 
+  test('orari spostati: anche la finestra temporale usa quelli corretti', () async {
+    const one = '<tv><programme start="20261110180000 +0000" stop="20261110190000 +0000" '
+        'channel="rai1"><title>Tg</title></programme></tv>';
+    final avanti = await parseXmltv(chunks(utf8.encode(one)), shift: const Duration(hours: 1));
+    final p = avanti.programmes['rai1']!.single;
+    expect((p.start, p.stop), (DateTime.utc(2026, 11, 10, 19), DateTime.utc(2026, 11, 10, 20)));
+    // Finito alle 19 secondo il file, ma alle 20 dopo lo spostamento.
+    final dentro = await parseXmltv(chunks(utf8.encode(one)),
+        from: DateTime.utc(2026, 11, 10, 19, 30), shift: const Duration(hours: 1));
+    expect(dentro.programmes['rai1'], hasLength(1));
+    final indietro = await parseXmltv(chunks(utf8.encode(one)),
+        from: DateTime.utc(2026, 11, 10, 18, 30), shift: const Duration(hours: -1));
+    expect(indietro.programmes, isEmpty);
+  });
+
   test('file vuoto o senza programmi', () async {
     expect((await parseXmltv(const Stream.empty())).programmes, isEmpty);
     expect(EpgGuide([EpgData.empty]).isEmpty, isTrue);

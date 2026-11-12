@@ -64,6 +64,13 @@ class ChannelPrefs {
         hidden: hide ? {...hidden, key} : ({...hidden}..remove(key)),
       );
 
+  /// Nasconde o mostra più canali insieme (es. un'intera categoria).
+  ChannelPrefs setHiddenAll(Iterable<String> keys, bool hide) => ChannelPrefs(
+        merges: merges,
+        overrides: overrides,
+        hidden: hide ? {...hidden, ...keys} : hidden.difference(keys.toSet()),
+      );
+
   ChannelPrefs rename(String key, String name) {
     final o = overrides[key] ?? const ChannelOverride();
     return _withOverride(key, ChannelOverride(name: name.trim(), logo: o.logo));

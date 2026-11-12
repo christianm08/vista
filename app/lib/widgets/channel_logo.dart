@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 import '../data/channel_logos.dart';
+import '../data/image_cache.dart';
 import '../theme.dart';
 
 /// Logo del canale: quello scelto dall'utente, tv-logos (link raw di GitHub),
@@ -42,11 +43,10 @@ class ChannelLogo extends StatelessWidget {
     if (urls.isEmpty) return ClipRRect(borderRadius: r, child: mono);
     final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
 
-    Widget image(int i) => Image.network(
-      urls[i],
+    Widget image(int i) => Image(
+      image: ResizeImage.resizeIfNeeded(px, null, CachedNetImage(urls[i])),
       key: ValueKey(urls[i]),
       fit: BoxFit.contain,
-      cacheWidth: px,
       errorBuilder: (_, _, _) => i + 1 < urls.length ? image(i + 1) : mono,
     );
 

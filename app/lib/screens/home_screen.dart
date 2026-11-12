@@ -52,7 +52,10 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _now = DateTime.now();
   late final Timer _clock;
   Timer? _rotate;
-  int _hero = 0;
+
+  /// Titolo in evidenza: cambia ogni 9 s ridisegnando solo il riquadro, non
+  /// tutta la Home.
+  final _heroIndex = ValueNotifier<int>(0);
   bool _heroFocused = false;
 
   // Calcoli costosi sulle liste grandi, rifatti solo al cambio di catalogo.
@@ -60,6 +63,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Movie> _recentMovies = const [];
   List<Series> _recentSeries = const [];
   List<(String, List<Movie>)> _movieGroups = const [];
+  List<Channel> _channels = const [];
+  Map<String, Channel> _channelsByKey = const {};
+  Map<String, Movie> _moviesById = const {};
+  Map<String, Series> _seriesById = const {};
 
   @override
   void initState() {
@@ -68,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _now = DateTime.now());
     });
     _rotate = Timer.periodic(const Duration(seconds: 9), (_) {
-      if (mounted && !_heroFocused) setState(() => _hero++);
+      if (mounted && !_heroFocused) _heroIndex.value++;
     });
   }
 
@@ -76,12 +83,20 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _clock.cancel();
     _rotate?.cancel();
+    _heroIndex.dispose();
     super.dispose();
   }
 
   void _memo(Catalog c) {
     if (identical(_memoFor, c)) return;
     _memoFor = c;
+    _channels = [
+      for (final ch in c.live.channels)
+        if (!ch.hidden) ch,
+    ];
+    _channelsByKey = {for (final ch in _channels) ch.key: ch};
+    _moviesById = {for (final m in c.movies) m.id: m};
+    _seriesById = {for (final s in c.series) s.id: s};
     // "Aggiunti di recente": per data se la fonte la dà, altrimenti gli
     // ultimi della lista (i pannelli aggiungono in fondo).
     final movies = c.movies.any((m) => m.added != null)
@@ -139,11 +154,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final layout = VistaLayout.of(context);
     final user = app.user;
     final guide = app.epg.guide.value;
-    final channels = [
-      for (final c in catalog.live.channels)
-        if (!c.hidden) c,
-    ];
-    final byKey = {for (final c in channels) c.key: c};
+    final channels = _channels;
+    final byKey = _channelsByKey;
 
     final favChannels = [
       for (final c in channels)
@@ -153,8 +165,8 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final k in user.recentChannels)
         if (byKey[k] != null) byKey[k]!,
     ];
-    final moviesById = {for (final m in catalog.movies) m.id: m};
-    final seriesById = {for (final s in catalog.series) s.id: s};
+    final moviesById = _moviesById;
+    final seriesById = _seriesById;
     final myList = <Object>[
       for (final k in user.favorites)
         if (k.startsWith('mv:') && moviesById[k.substring(3)] != null)
@@ -175,7 +187,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final featured = _featured(context, catalog, resume);
-    final hero = featured.isEmpty ? null : featured[_hero % featured.length];
 
     final pw = layout.posterWidth;
     final posterH = pw * 1.5 + PosterCard.textHeight;
@@ -221,7 +232,10 @@ class _HomeScreenState extends State<HomeScreen> {
           key: ValueKey('home-svc-${user.services.join(',')}'),
           title: 'Popolari sui tuoi servizi',
           load: () async {
-            final ids = withVariants(user.services, await app.tmdb.providers()).toList();
+            final ids = withVariants(
+              user.services,
+              await app.tmdb.providers(),
+            ).toList();
             final r = await Future.wait([
               app.tmdb.discover(MediaType.movie, providers: ids),
               app.tmdb.discover(MediaType.tv, providers: ids),
@@ -275,11 +289,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(child: _header(context, layout)),
-        if (hero != null)
+        if (featured.isNotEmpty)
           SliverToBoxAdapter(
-            child: _heroCard(context, layout, hero, featured.length),
+            child: ValueListenableBuilder<int>(
+              valueListenable: _heroIndex,
+              builder: (context, i, _) => _heroCard(
+                context,
+                layout,
+                featured[i % featured.length],
+                featured.length,
+                i % featured.length,
+              ),
+            ),
           ),
-        if (rows.isEmpty && hero == null)
+        if (rows.isEmpty && featured.isEmpty)
           const SliverFillRemaining(
             hasScrollBody: false,
             child: EmptyState(
@@ -421,6 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
     VistaLayout layout,
     _Featured f,
     int count,
+    int index,
   ) {
     final t = Theme.of(context).textTheme;
     final g = layout.gutter;
@@ -433,7 +457,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Focus(
         canRequestFocus: false,
         skipTraversal: true,
-        onFocusChange: (v) => setState(() => _heroFocused = v),
+        onFocusChange: (v) => _heroFocused = v,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(VistaRadius.hero),
           child: SizedBox(
@@ -447,18 +471,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: KeyedSubtree(
                     key: ValueKey(f.title),
                     child: usesPoster
-                        ? ImageFiltered(
-                            imageFilter: blurFilter(28),
-                            child: Transform.scale(
-                              scale: 1.2,
-                              child: NetImage(
-                                f.backdrop,
-                                cacheWidth: 300,
-                                placeholder: TitlePlaceholder(
-                                  f.title,
-                                  showText: false,
-                                ),
-                              ),
+                        ? NetImage(
+                            f.backdrop,
+                            soft: true,
+                            placeholder: TitlePlaceholder(
+                              f.title,
+                              showText: false,
                             ),
                           )
                         : NetImage(
@@ -575,7 +593,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 if (count > 1)
                                   OutlinedButton(
-                                    onPressed: () => setState(() => _hero++),
+                                    onPressed: () => _heroIndex.value++,
                                     child: const Icon(
                                       Icons.chevron_right_rounded,
                                     ),
@@ -614,11 +632,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         for (var i = 0; i < count; i++)
                           Container(
-                            width: i == _hero % count ? 18 : 6,
+                            width: i == index ? 18 : 6,
                             height: 6,
                             margin: const EdgeInsets.only(left: 5),
                             decoration: BoxDecoration(
-                              color: i == _hero % count
+                              color: i == index
                                   ? Colors.white
                                   : VistaColors.glassActive,
                               borderRadius: BorderRadius.circular(99),

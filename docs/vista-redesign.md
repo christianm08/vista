@@ -22,16 +22,18 @@ seria** (TiviMate) e **un catalogo dei servizi legali** (JustWatch). È lo spazi
 
 1. **Una sola struttura, tre forme.** Le stesse sezioni ovunque:
    - telefono: barra in basso;
-   - PC e tablet: barra laterale con le etichette;
-   - TV: barra laterale a icone che si allarga col focus (stile Google TV/Plex).
+   - PC, tablet e TV: barra laterale con le etichette. Su TV l'app si disegna su una
+     tela larga 1280 punti, come una finestra del PC, e si scala sullo schermo: TV e
+     Windows hanno la stessa impaginazione (aggiornato il 12/11/2026).
 2. **I contenuti al centro.** Locandine e sfondi grandi, l'interfaccia passa in secondo
    piano: niente cornici superflue e un solo accento (pesca) per avanzamento e focus.
 3. **Gerarchia chiara.** Titoli di riga piccoli in maiuscoletto, titoli dei contenuti in
    grassetto, metadati su una riga separati da "·".
 4. **Il telecomando prima di tutto.** Focus sempre visibile, Indietro prevedibile (torna
    alla barra, poi alla Home, poi esce), nessun vicolo cieco.
-5. **Veloce.** Niente blur sulle superfici che cambiano, immagini ridimensionate in
-   decodifica, liste virtualizzate.
+5. **Veloce.** Nessun blur (né sullo sfondo né sulle superfici: gli aloni sono
+   gradienti), immagini ridimensionate in decodifica e tenute anche su disco, liste
+   virtualizzate, calcoli sulle liste grandi fatti una volta per catalogo.
 
 ## Sezioni
 

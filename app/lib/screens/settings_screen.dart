@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
+import '../data/epg_store.dart';
 import '../data/source_store.dart';
 import '../theme.dart';
 import '../widgets/focus_card.dart';
+import '../widgets/tv_text_field.dart';
 import 'channel_settings_screen.dart';
 import 'services_screen.dart';
 import 'shell.dart';
@@ -67,6 +69,137 @@ class _SettingsScreenState extends State<SettingsScreen> {
       AppScope.of(context).user.clearRecent();
       showToast(context, 'Canali recenti svuotati.');
     }
+  }
+
+  /// Link XMLTV personale: ha la precedenza su epg.lat e sulla guida della
+  /// lista. Non si mostra mai per intero (può contenere una password).
+  Future<void> _editGuideLink() async {
+    final epg = AppScope.of(context).epg;
+    final ctl = TextEditingController();
+    String? error;
+    final result = await showDialog<(bool, Uri?)>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) {
+          void save() {
+            final u = EpgStore.parseGuideUri(ctl.text);
+            if (u == null) {
+              setDialog(
+                () => error = 'Serve un link che inizia con http:// o https://',
+              );
+              return;
+            }
+            Navigator.pop(ctx, (true, u));
+          }
+
+          return AlertDialog(
+            backgroundColor: const Color(0xF0121720),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(VistaRadius.card),
+            ),
+            title: const Text('Link della guida TV'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    epg.customUri.value == null
+                        ? 'Un file XMLTV (.xml o .xml.gz). Avrà la precedenza sulle altre guide.'
+                        : 'Attuale: ${epg.customUri.value!.host}. Scrivi un nuovo link per sostituirlo.',
+                    style: Theme.of(ctx).textTheme.bodySmall
+                        ?.copyWith(color: VistaColors.textSecondary),
+                  ),
+                  const SizedBox(height: 14),
+                  TvTextField(
+                    controller: ctl,
+                    hint: 'https://… link della guida XMLTV',
+                    autofocus: true,
+                    keyboardType: TextInputType.url,
+                    onSubmitted: (_) => save(),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      error!,
+                      style: const TextStyle(color: Color(0xFFFF8A80)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              if (epg.customUri.value != null)
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, (true, null)),
+                  child: const Text('Rimuovi link'),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annulla'),
+              ),
+              FilledButton(onPressed: save, child: const Text('Salva')),
+            ],
+          );
+        },
+      ),
+    );
+    ctl.dispose();
+    if (result == null || !result.$1 || !mounted) return;
+    await epg.setCustomUri(result.$2);
+    if (mounted) {
+      showToast(
+        context,
+        result.$2 == null
+            ? 'Link della guida rimosso.'
+            : 'Link salvato: scarico la guida…',
+      );
+    }
+  }
+
+  /// Sposta gli orari della guida quando sono sbagliati di qualche ora.
+  Future<void> _editGuideShift() async {
+    final epg = AppScope.of(context).epg;
+    final current = epg.shift.value.inHours;
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: const Color(0xF0121720),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(VistaRadius.card),
+        ),
+        title: const Text('Sposta gli orari della guida'),
+        children: [
+          SizedBox(
+            width: 320,
+            height: 360,
+            child: ListView(
+              children: [
+                for (var h = -12; h <= 12; h++)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(ctx, h),
+                    child: FocusCard(
+                      autofocus: h == current,
+                      radius: 12,
+                      focusScale: 1.0,
+                      selected: h == current,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      onTap: () => Navigator.pop(ctx, h),
+                      child: Text(shiftLabel(Duration(hours: h))),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (picked == null || picked == current || !mounted) return;
+    await epg.setShift(Duration(hours: picked));
   }
 
   Future<bool> _confirm(String title, String body, String action) async {
@@ -186,6 +319,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
+                ListenableBuilder(
+                  listenable: app.user,
+                  builder: (context, _) => _Tile(
+                    icon: Icons.play_circle_outline_rounded,
+                    title: 'All\'avvio apri l\'ultimo canale',
+                    subtitle: app.user.startOnLastChannel
+                        ? 'Vista riparte dal canale che stavi guardando.'
+                        : 'Vista si apre sulla Home.',
+                    trailing: ExcludeFocus(
+                      child: Switch(
+                        value: app.user.startOnLastChannel,
+                        onChanged: app.user.setStartOnLastChannel,
+                      ),
+                    ),
+                    onTap: () => app.user.setStartOnLastChannel(
+                      !app.user.startOnLastChannel,
+                    ),
+                  ),
+                ),
                 ValueListenableBuilder<String>(
                   valueListenable: app.epg.status,
                   builder: (context, status, _) => _Tile(
@@ -197,6 +349,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? 'Guida dalla fonte e da epg.lat.'
                         : status,
                     onTap: _epgRefreshing ? null : _refreshEpg,
+                  ),
+                ),
+                ValueListenableBuilder<Uri?>(
+                  valueListenable: app.epg.customUri,
+                  builder: (context, uri, _) => _Tile(
+                    icon: Icons.link_rounded,
+                    title: 'Link della guida TV',
+                    subtitle: uri == null
+                        ? 'Aggiungi una tua guida XMLTV, oltre a epg.lat e a quella della lista.'
+                        : 'La tua guida da ${uri.host} ha la precedenza.',
+                    onTap: _editGuideLink,
+                  ),
+                ),
+                ValueListenableBuilder<Duration>(
+                  valueListenable: app.epg.shift,
+                  builder: (context, shift, _) => _Tile(
+                    icon: Icons.schedule_rounded,
+                    title: 'Orari della guida',
+                    subtitle: shift == Duration.zero
+                        ? 'Nessuna correzione. Usala se i programmi sono in anticipo o in ritardo.'
+                        : 'Spostati di ${shiftLabel(shift)}.',
+                    onTap: _editGuideShift,
                   ),
                 ),
                 _Tile(
@@ -229,6 +403,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
+/// `+1 h`, `−2 h`, `nessuna correzione`.
+String shiftLabel(Duration d) {
+  final h = d.inHours;
+  if (h == 0) return 'nessuna correzione';
+  return '${h > 0 ? '+' : '−'}${h.abs()} h';
+}
+
 class _Header extends StatelessWidget {
   const _Header(this.text);
   final String text;
@@ -254,6 +435,7 @@ class _Tile extends StatelessWidget {
     this.subtitle = '',
     this.onTap,
     this.autofocus = false,
+    this.trailing,
   });
 
   final IconData icon;
@@ -261,6 +443,9 @@ class _Tile extends StatelessWidget {
   final String subtitle;
   final VoidCallback? onTap;
   final bool autofocus;
+
+  /// Al posto della freccia (es. un interruttore).
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -299,7 +484,9 @@ class _Tile extends StatelessWidget {
                 ],
               ),
             ),
-            if (onTap != null)
+            if (trailing != null)
+              trailing!
+            else if (onTap != null)
               const Icon(
                 Icons.chevron_right_rounded,
                 color: VistaColors.textTertiary,

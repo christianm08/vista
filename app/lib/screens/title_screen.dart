@@ -296,7 +296,7 @@ class _TitleScreenState extends State<TitleScreen> {
   }
 
   Widget _headWide(BuildContext context, VistaLayout layout, UserStore user) {
-    final posterW = layout.tv ? 170.0 : 210.0;
+    const posterW = 210.0;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -597,54 +597,54 @@ class TitleBackdrop extends StatelessWidget {
         ? NetImage(
             backdrop,
             cacheWidth: 1280,
+            opacity: 0.7,
             placeholder: const SizedBox.shrink(),
           )
-        : ImageFiltered(
-            imageFilter: blurFilter(30),
-            child: Transform.scale(
-              scale: 1.3,
-              child: NetImage(
-                poster,
-                cacheWidth: 300,
-                placeholder: TitlePlaceholder(title, showText: false),
-              ),
-            ),
+        : NetImage(
+            poster,
+            soft: true,
+            opacity: 0.5,
+            placeholder: TitlePlaceholder(title, showText: false),
           );
     // L'immagine sfuma nella trasparenza (non verso un colore pieno): sotto
     // c'è lo sfondo con gli aloni e non si vede nessuno stacco.
-    return ShaderMask(
-      blendMode: BlendMode.dstIn,
-      shaderCallback: (r) => const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
-        stops: [0, 0.55, 1],
-      ).createShader(r),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Opacity(opacity: backdrop.isNotEmpty ? 0.7 : 0.5, child: image),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x8807090D), Color(0x0007090D)],
-                stops: [0, 0.3],
+    // Immagine statica: RepaintBoundary evita di rifare la sfumatura mentre
+    // la pagina scorre sopra.
+    return RepaintBoundary(
+      child: ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (r) => const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+          stops: [0, 0.55, 1],
+        ).createShader(r),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            image,
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x8807090D), Color(0x0007090D)],
+                  stops: [0, 0.3],
+                ),
               ),
             ),
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [Color(0xE607090D), Color(0x0007090D)],
-                stops: [0, 0.75],
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [Color(0xE607090D), Color(0x0007090D)],
+                  stops: [0, 0.75],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

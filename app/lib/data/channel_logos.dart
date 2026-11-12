@@ -32,7 +32,11 @@ abstract final class ChannelLogos {
     try {
       final f = await _file();
       if (await f.exists()) {
-        final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+        // Indice di qualche migliaio di loghi: letto fuori dal thread
+        // dell'interfaccia per non ritardare l'avvio.
+        final raw = await f.readAsString();
+        final j =
+            await Isolate.run(() => jsonDecode(raw)) as Map<String, dynamic>;
         notifier.value = TvLogos(Map<String, String>.from(j['logos'] as Map));
         fetchedAt = DateTime.tryParse(j['fetchedAt'] as String? ?? '');
       }

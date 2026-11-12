@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:vista_resolver/vista_resolver.dart';
@@ -12,10 +13,11 @@ import 'source_store.dart';
 
 /// Guida TV (EPG) della fonte corrente.
 ///
-/// Fonti in ordine di priorità: la guida di Vista ([defaultEpgUri], XMLTV di
-/// epg.lat) e, come riserva, quella della lista (`x-tvg-url` per le M3U,
-/// `xmltv.php` per Xtream). I file restano in cache e si riscaricano dopo
-/// [_maxAge]; in memoria si tengono solo i programmi delle prossime ore.
+/// Fonti in ordine di priorità: il link scelto dall'utente, se c'è, poi la
+/// guida di Vista ([defaultEpgUri], XMLTV di epg.lat) e, come riserva,
+/// quella della lista (`x-tvg-url` per le M3U, `xmltv.php` per Xtream). I
+/// file restano in cache e si riscaricano dopo [_maxAge]; in memoria si
+/// tengono solo i programmi delle prossime ore.
 class EpgStore {
   EpgStore(this.sources) {
     sources.library.addListener(_onLibrary);
@@ -24,18 +26,79 @@ class EpgStore {
 
   static const _maxAge = Duration(hours: 6);
 
+  /// Link personale e spostamento degli orari. Nel portachiavi perché il
+  /// link può contenere nome utente e password.
+  static const _settingsKey = 'vista.epg';
+
   final SourceStore sources;
   final guide = ValueNotifier<EpgGuide>(EpgGuide.empty);
 
   /// Stato da mostrare (guida vecchia, non disponibile…), vuoto se tutto ok.
   final status = ValueNotifier<String>('');
 
+  /// Guida XMLTV scelta dall'utente (ha la precedenza sulle altre).
+  final customUri = ValueNotifier<Uri?>(null);
+
+  /// Correzione degli orari di tutte le guide.
+  final shift = ValueNotifier<Duration>(Duration.zero);
+
+  final _secure = const FlutterSecureStorage();
+  Future<void>? _settings;
   int _generation = 0;
 
   void dispose() => sources.library.removeListener(_onLibrary);
 
+  Future<void> _ensureSettings() => _settings ??= _readSettings();
+
+  Future<void> _readSettings() async {
+    try {
+      final raw = await _secure.read(key: _settingsKey);
+      if (raw == null) return;
+      final j = jsonDecode(raw);
+      if (j is! Map) return;
+      customUri.value = parseGuideUri(j['url'] as String? ?? '');
+      shift.value = Duration(minutes: j['shift'] as int? ?? 0);
+    } catch (_) {
+      // Impostazioni illeggibili: si usano quelle predefinite.
+    }
+  }
+
+  Future<void> _writeSettings() => _secure.write(
+    key: _settingsKey,
+    value: jsonEncode({
+      'url': customUri.value?.toString() ?? '',
+      'shift': shift.value.inMinutes,
+    }),
+  );
+
+  /// Un link http(s) valido, altrimenti `null`.
+  static Uri? parseGuideUri(String text) {
+    final u = Uri.tryParse(text.trim());
+    if (u == null || u.host.isEmpty) return null;
+    return u.isScheme('http') || u.isScheme('https') ? u : null;
+  }
+
+  /// Imposta (o toglie, con `null`) il link personale e ricarica la guida.
+  Future<void> setCustomUri(Uri? uri) async {
+    await _ensureSettings();
+    customUri.value = uri;
+    await _writeSettings();
+    final lib = sources.library.value;
+    if (lib != null) await _load(lib, ++_generation);
+  }
+
+  /// Sposta gli orari di tutte le guide; non serve riscaricarle.
+  Future<void> setShift(Duration d) async {
+    await _ensureSettings();
+    shift.value = d;
+    await _writeSettings();
+    final lib = sources.library.value;
+    if (lib != null) await _load(lib, ++_generation);
+  }
+
   /// URL delle guide per una fonte, in ordine di priorità.
-  static List<Uri> urisFor(Library lib) => [
+  List<Uri> urisFor(Library lib) => [
+    ?customUri.value,
     defaultEpgUri,
     ...switch (lib.source) {
       XtreamSource(:final credentials) => [
@@ -72,6 +135,8 @@ class EpgStore {
   }
 
   Future<void> _load(Library lib, int gen, {bool force = false}) async {
+    await _ensureSettings();
+    if (gen != _generation) return;
     final uris = urisFor(lib);
     final dir = await getApplicationSupportDirectory();
     final files = [
@@ -96,6 +161,8 @@ class EpgStore {
     final now = DateTime.now().toUtc();
     final from = now.subtract(const Duration(hours: 3));
     final to = now.add(const Duration(hours: 30));
+    final shift = this.shift.value;
+    final custom = customUri.value != null;
     final data = <EpgData>[];
     for (var i = 0; i < files.length; i++) {
       final f = files[i];
@@ -107,7 +174,12 @@ class EpgStore {
       try {
         data.add(
           await Isolate.run(
-            () => parseXmltv(File(path).openRead(), from: from, to: to),
+            () => parseXmltv(
+              File(path).openRead(),
+              from: from,
+              to: to,
+              shift: shift,
+            ),
           ),
         );
       } catch (_) {
@@ -116,16 +188,19 @@ class EpgStore {
     }
     if (gen != _generation) return;
     guide.value = EpgGuide(data);
-    status.value = _describe(data, now);
+    status.value = _describe(data, custom: custom);
   }
 
-  String _describe(List<EpgData> data, DateTime now) {
-    final main = data.isEmpty ? EpgData.empty : data.first;
-    final listHasData = data.skip(1).any((d) => d.programmes.isNotEmpty);
-    if (main.programmes.isEmpty) {
-      return listHasData
-          ? 'Guida epg.lat non disponibile: uso quella della lista.'
-          : 'Guida TV non disponibile al momento.';
+  String _describe(List<EpgData> data, {required bool custom}) {
+    bool has(int i) => i < data.length && data[i].programmes.isNotEmpty;
+    if (!data.any((d) => d.programmes.isNotEmpty)) {
+      return 'Guida TV non disponibile al momento.';
+    }
+    if (custom && !has(0)) {
+      return 'Il tuo link della guida non ha dati: uso le altre guide.';
+    }
+    if (!custom && !has(0)) {
+      return 'Guida epg.lat non disponibile: uso quella della lista.';
     }
     return '';
   }

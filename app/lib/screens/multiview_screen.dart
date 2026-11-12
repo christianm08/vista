@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
+import '../data/window_mode.dart';
 import '../player/stream_picker.dart';
 import '../player/video.dart';
 import '../theme.dart';
@@ -89,7 +90,10 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
       if (!mounted) return;
       final inside = _tiles.any((t) => t.focus.hasFocus) || _addFocus.hasFocus;
       if (!inside) {
-        (_tiles.length < MultiviewScreen.maxTiles ? _addFocus : _tiles.first.focus).requestFocus();
+        (_tiles.length < MultiviewScreen.maxTiles
+                ? _addFocus
+                : _tiles.first.focus)
+            .requestFocus();
       }
     }
 
@@ -319,8 +323,9 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
       backgroundColor: Colors.black,
       body: CallbackShortcuts(
         bindings: {
-          const SingleActivator(LogicalKeyboardKey.escape): () =>
-              Navigator.of(context).maybePop(),
+          const SingleActivator(LogicalKeyboardKey.escape): () {
+            if (!WindowMode.leaveOnEscape()) Navigator.of(context).maybePop();
+          },
         },
         child: Stack(
           children: [
@@ -332,6 +337,10 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
                 alignment: Alignment.topLeft,
                 child: PlayerBackButton(),
               ),
+            const Align(
+              alignment: Alignment.topRight,
+              child: FullScreenButton(),
+            ),
           ],
         ),
       ),

@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'data/image_cache.dart';
+
 /// Colori dello stile "B · Vetro".
 abstract final class VistaColors {
   static const background = Color(0xFF07090D);
@@ -70,24 +72,62 @@ class VistaLayout {
   /// Telefono (o finestra stretta): barra in basso, una colonna.
   bool get compact => width < 700 && !Device.isTv;
 
-  /// Interfaccia da telecomando (Android TV).
+  /// Interfaccia da telecomando (Android TV). Le misure sono quelle del PC:
+  /// su TV l'app si disegna su una tela larga come una finestra ([TvCanvas]).
   bool get tv => Device.isTv;
 
   /// Margine laterale del contenuto.
-  double get gutter => compact ? 16 : (tv ? 28 : 32);
+  double get gutter => compact ? 16 : 32;
 
   /// Larghezza delle locandine 2:3 nelle righe orizzontali.
   double get posterWidth {
     if (compact) return 112;
-    if (tv) return 124;
     return width >= 1600 ? 168 : 148;
   }
 
   /// Larghezza delle schede 16:9 (continua a guardare, canali).
   double get wideCardWidth {
     if (compact) return 220;
-    if (tv) return 232;
     return width >= 1600 ? 300 : 264;
+  }
+}
+
+/// Su TV l'interfaccia si disegna su una tela larga [width] punti, come una
+/// finestra del PC, e si scala sullo schermo: così TV e Windows hanno la
+/// stessa impaginazione (barra laterale aperta, stesse righe e locandine).
+/// Su PC e telefono non fa niente.
+class TvCanvas extends StatelessWidget {
+  const TvCanvas({super.key, required this.child});
+
+  static const width = 1280.0;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!Device.isTv) return child;
+    final mq = MediaQuery.of(context);
+    final screen = mq.size;
+    if (screen.width <= 0 || screen.height <= 0) return child;
+    final scale = screen.width / width;
+    final size = Size(width, screen.height / scale);
+    return FittedBox(
+      fit: BoxFit.fill,
+      alignment: Alignment.topLeft,
+      child: SizedBox.fromSize(
+        size: size,
+        child: MediaQuery(
+          data: mq.copyWith(
+            size: size,
+            devicePixelRatio: mq.devicePixelRatio * scale,
+            padding: mq.padding / scale,
+            viewPadding: mq.viewPadding / scale,
+            viewInsets: mq.viewInsets / scale,
+          ),
+          child: child,
+        ),
+      ),
+    );
   }
 }
 
@@ -132,10 +172,6 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
-/// Sfocatura per gli sfondi ricavati dalle locandine.
-ImageFilter blurFilter(double sigma) =>
-    ImageFilter.blur(sigmaX: sigma, sigmaY: sigma);
-
 /// Metadati su una riga separati da "·" (anno · genere · durata).
 String metaLine(Iterable<String?> parts) =>
     parts.where((p) => p != null && p.trim().isNotEmpty).join('  ·  ');
@@ -150,6 +186,10 @@ String formatDuration(Duration d) {
 
 /// Immagine di rete con segnaposto e ridimensionamento in decodifica
 /// (le locandine originali pesano anche 1-2 MB: sui box TV sono troppo).
+///
+/// Le immagini restano anche su disco ([CachedNetImage]): tornando su una
+/// schermata non si riscaricano. [soft] le decodifica minuscole e le allarga:
+/// un "blur" che non costa niente alla scheda grafica.
 class NetImage extends StatelessWidget {
   const NetImage(
     this.url, {
@@ -157,12 +197,16 @@ class NetImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.cacheWidth,
     this.placeholder,
+    this.opacity = 1,
+    this.soft = false,
   });
 
   final String url;
   final BoxFit fit;
   final int? cacheWidth;
   final Widget? placeholder;
+  final double opacity;
+  final bool soft;
 
   @override
   Widget build(BuildContext context) {
@@ -171,11 +215,16 @@ class NetImage extends StatelessWidget {
         !(url.startsWith('http://') || url.startsWith('https://'))) {
       return ph;
     }
-    return Image.network(
-      url,
+    return Image(
+      image: ResizeImage.resizeIfNeeded(
+        soft ? 24 : cacheWidth,
+        null,
+        CachedNetImage(url),
+      ),
       fit: fit,
-      cacheWidth: cacheWidth,
       gaplessPlayback: true,
+      filterQuality: soft ? FilterQuality.medium : FilterQuality.low,
+      opacity: opacity == 1 ? null : AlwaysStoppedAnimation(opacity),
       errorBuilder: (_, _, _) => ph,
       frameBuilder: (_, child, frame, sync) =>
           sync || frame != null ? child : ph,
@@ -285,7 +334,10 @@ ThemeData buildVistaTheme() {
   );
 }
 
-/// Sfondo con gli aloni sfocati (verde acqua, pesca, viola).
+/// Sfondo con gli aloni sfumati (verde acqua, pesca, viola).
+///
+/// Gli aloni sono gradienti radiali, non cerchi sfocati: lo stesso effetto
+/// senza un blur a tutto schermo, che sui box TV costava a ogni fotogramma.
 class VistaBackground extends StatelessWidget {
   const VistaBackground({super.key, required this.child});
   final Widget child;
@@ -297,20 +349,16 @@ class VistaBackground extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Lo sfondo non cambia: RepaintBoundary evita di ricalcolare il blur
-          // (costoso sui box TV) a ogni movimento del focus.
-          RepaintBoundary(
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 85, sigmaY: 85),
-              child: const Stack(
-                // Aloni discreti: danno profondità senza competere con le
-                // locandine.
-                children: [
-                  _Halo(VistaColors.teal, Alignment(-1.1, -1.1), 0.32),
-                  _Halo(VistaColors.peach, Alignment(1.25, -0.6), 0.18),
-                  _Halo(VistaColors.violet, Alignment(-0.3, 1.3), 0.28),
-                ],
-              ),
+          // Lo sfondo non cambia: non si ridisegna quando cambia il resto.
+          const RepaintBoundary(
+            child: Stack(
+              // Aloni discreti: danno profondità senza competere con le
+              // locandine.
+              children: [
+                _Halo(VistaColors.teal, Alignment(-1.1, -1.1), 0.32),
+                _Halo(VistaColors.peach, Alignment(1.25, -0.6), 0.18),
+                _Halo(VistaColors.violet, Alignment(-0.3, 1.3), 0.28),
+              ],
             ),
           ),
           child,
@@ -330,19 +378,29 @@ class _Halo extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: alignment,
-      child: Container(
-        width: 360,
-        height: 360,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color.withValues(alpha: opacity),
+      child: SizedBox.square(
+        dimension: 760,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              colors: [
+                color.withValues(alpha: opacity),
+                color.withValues(alpha: opacity * 0.55),
+                color.withValues(alpha: 0),
+              ],
+              stops: const [0.0, 0.35, 1.0],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-/// Superficie di vetro: riempimento traslucido, bordo e blur dello sfondo.
+/// Superficie di vetro: riempimento traslucido e bordo.
+///
+/// Niente blur dello sfondo (BackdropFilter): su TV e telefoni rallentava
+/// ogni scorrimento; sopra lo sfondo scuro il riempimento basta.
 class Glass extends StatelessWidget {
   const Glass({
     super.key,
@@ -350,7 +408,6 @@ class Glass extends StatelessWidget {
     this.radius = VistaRadius.card,
     this.fill = VistaColors.glass,
     this.padding = EdgeInsets.zero,
-    this.blur = true,
   });
 
   final Widget child;
@@ -358,29 +415,16 @@ class Glass extends StatelessWidget {
   final Color fill;
   final EdgeInsetsGeometry padding;
 
-  /// Il blur dello sfondo è costoso: le superfici che cambiano spesso (guida,
-  /// pannelli sul video) usano solo il riempimento traslucido.
-  final bool blur;
-
   @override
   Widget build(BuildContext context) {
-    final r = BorderRadius.circular(radius);
-    final box = Container(
+    return Container(
       padding: padding,
       decoration: BoxDecoration(
         color: fill,
-        borderRadius: r,
+        borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: VistaColors.glassBorder),
       ),
       child: child,
-    );
-    if (!blur) return box;
-    return ClipRRect(
-      borderRadius: r,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: box,
-      ),
     );
   }
 }

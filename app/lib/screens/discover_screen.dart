@@ -176,7 +176,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           _row(
             'Su ${s.name}',
             'svc${s.id}',
-            (p) => _discover(tmdb, providers: withVariants([s.id], all).toList(), page: p),
+            (p) => _discover(
+              tmdb,
+              providers: withVariants([s.id], all).toList(),
+              page: p,
+            ),
           ),
       if (_service == null)
         TmdbRow(

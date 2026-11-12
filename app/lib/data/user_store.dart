@@ -94,7 +94,27 @@ class UserStore extends ChangeNotifier {
   final _recent = <String>[]; // chiavi dei canali, il più recente per primo
   final _services = <int>[]; // servizi di streaming scelti (id TMDB)
   final _saved = <String, SavedTitle>{}; // titoli TMDB in "La mia lista"
+  PictureFormat _picture = PictureFormat.fit;
+  bool _startOnLastChannel = false;
   Timer? _saveTimer;
+
+  /// Formato dell'immagine nei player (vale per tutti i canali e i titoli).
+  PictureFormat get picture => _picture;
+
+  void setPicture(PictureFormat p) {
+    if (p == _picture) return;
+    _picture = p;
+    _changed();
+  }
+
+  /// All'avvio dell'app si riapre l'ultimo canale guardato.
+  bool get startOnLastChannel => _startOnLastChannel;
+
+  void setStartOnLastChannel(bool on) {
+    if (on == _startOnLastChannel) return;
+    _startOnLastChannel = on;
+    _changed();
+  }
 
   /// I servizi di streaming dell'utente (id dei provider TMDB/JustWatch).
   List<int> get services => List.unmodifiable(_services);
@@ -181,6 +201,15 @@ class UserStore extends ChangeNotifier {
         final p = WatchProgress.fromJson(x);
         if (p != null) _progress[p.key] = p;
       }
+      final prefs = j['prefs'];
+      if (prefs is Map) {
+        _picture =
+            PictureFormat.values
+                .where((p) => p.name == prefs['picture'])
+                .firstOrNull ??
+            PictureFormat.fit;
+        _startOnLastChannel = prefs['startLast'] == true;
+      }
       notifyListeners();
     } on FormatException {
       // File rovinato: si riparte da zero piuttosto che bloccare l'app.
@@ -243,6 +272,7 @@ class UserStore extends ChangeNotifier {
       'services': _services,
       'saved': [for (final t in _saved.values) t.toJson()],
       'progress': [for (final p in _progress.values) p.toJson()],
+      'prefs': {'picture': _picture.name, 'startLast': _startOnLastChannel},
     });
     try {
       final f = await _file();
@@ -259,6 +289,19 @@ class UserStore extends ChangeNotifier {
     _saveTimer?.cancel();
     super.dispose();
   }
+}
+
+/// Come riempire lo schermo con il video.
+enum PictureFormat {
+  fit('Adatta', 'Immagine intera, con bande nere se serve'),
+  zoom('Zoom', 'Riempie lo schermo tagliando i bordi'),
+  stretch('Allarga', 'Riempie lo schermo deformando l\'immagine'),
+  wide('16:9', 'Forza il formato panoramico'),
+  classic('4:3', 'Forza il formato tradizionale');
+
+  const PictureFormat(this.label, this.detail);
+  final String label;
+  final String detail;
 }
 
 /// Un titolo TMDB salvato in "La mia lista" (quanto basta per mostrarlo).

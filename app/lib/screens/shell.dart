@@ -4,7 +4,9 @@ import 'package:vista_resolver/vista_resolver.dart';
 
 import '../app_scope.dart';
 import '../data/source_store.dart';
+import '../data/window_mode.dart';
 import '../theme.dart';
+import '../widgets/vista_mark.dart';
 import 'catalog_screen.dart';
 import 'discover_screen.dart';
 import 'home_screen.dart';
@@ -101,6 +103,30 @@ class _AppShellState extends State<AppShell> {
     if (_catalog.series.isNotEmpty) Destination.series,
     Destination.settings,
   ];
+
+  /// L'ultimo canale si riapre una volta sola, all'avvio dell'app.
+  static bool _launched = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_launched) return;
+    _launched = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openLastChannel());
+  }
+
+  void _openLastChannel() {
+    if (!mounted) return;
+    final user = AppScope.of(context).user;
+    if (!user.startOnLastChannel || user.recentChannels.isEmpty) return;
+    final channels = [
+      for (final c in _catalog.live.channels)
+        if (!c.hidden) c,
+    ];
+    final last = user.recentChannels.first;
+    final c = channels.where((c) => c.key == last).firstOrNull;
+    if (c != null) Nav.playChannel(context, channels, c);
+  }
 
   @override
   void didUpdateWidget(AppShell old) {
@@ -251,8 +277,9 @@ class _AppShellState extends State<AppShell> {
         child: CallbackShortcuts(
           // Su PC Esc fa da "Indietro" (senza mai chiudere l'app).
           bindings: {
-            const SingleActivator(LogicalKeyboardKey.escape): () =>
-                _handleBack(allowExit: false),
+            const SingleActivator(LogicalKeyboardKey.escape): () {
+              if (!WindowMode.leaveOnEscape()) _handleBack(allowExit: false);
+            },
           },
           child: layout.compact ? _phone(layout) : _wide(layout),
         ),
@@ -269,7 +296,9 @@ class _AppShellState extends State<AppShell> {
     ];
     return Scaffold(
       extendBody: true,
-      body: _content,
+      // Il contenuto scorre sotto la barra in basso ma non sotto quella di
+      // stato (orologio, batteria): lì si sovrapporrebbe al testo.
+      body: SafeArea(bottom: false, child: _content),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
         child: _PillBar(
@@ -286,8 +315,9 @@ class _AppShellState extends State<AppShell> {
   Widget _wide(VistaLayout layout) {
     const collapsed = 76.0;
     const expandedWidth = 232.0;
-    // Su PC con finestra larga la barra resta aperta; su TV si apre col focus.
-    final pinned = !layout.tv && layout.width >= 1280;
+    // Con lo spazio di una finestra larga (anche su TV, vedi TvCanvas) la
+    // barra resta aperta; più stretta si apre col focus o col mouse.
+    final pinned = layout.width >= 1280;
     final open = pinned || _navFocused || _hover;
     final contentLeft = pinned ? expandedWidth : collapsed;
     return Scaffold(
@@ -299,7 +329,8 @@ class _AppShellState extends State<AppShell> {
               canRequestFocus: false,
               skipTraversal: true,
               onKeyEvent: _contentKey,
-              child: _content,
+              // Tablet: niente contenuto sotto la barra di stato.
+              child: SafeArea(bottom: false, left: false, child: _content),
             ),
           ),
           // Velo sul contenuto quando la barra si apre sopra.
@@ -474,27 +505,8 @@ class _Brand extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: 6),
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [VistaColors.accent, VistaColors.peach],
-              ),
-            ),
-            alignment: Alignment.center,
-            child: const Text(
-              'V',
-              style: TextStyle(
-                color: VistaColors.onPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-              ),
-            ),
-          ),
+          // Lo stesso marchio delle icone dell'app.
+          const VistaMark(size: 34),
           if (expanded) ...[
             const SizedBox(width: 12),
             const Expanded(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
+import '../data/user_store.dart';
 import '../theme.dart';
 import '../widgets/focus_card.dart';
 
@@ -314,3 +316,37 @@ List<PlayerOptionSection> trackSections(
 extension on String {
   String ifEmpty(String other) => isEmpty ? other : this;
 }
+
+/// Voci "Immagine": formato e zoom, salvati per tutti i player.
+PlayerOptionSection pictureSection(
+  UserStore user, {
+  required VoidCallback onPicked,
+}) => PlayerOptionSection('Immagine', [
+  for (final p in PictureFormat.values)
+    PlayerOption(
+      label: p.label,
+      detail: p.detail,
+      selected: user.picture == p,
+      onTap: () {
+        user.setPicture(p);
+        onPicked();
+      },
+    ),
+]);
+
+/// Il video nel formato scelto.
+Widget formattedVideo(VideoController controller, PictureFormat format) =>
+    Video(
+      controller: controller,
+      controls: NoVideoControls,
+      fit: switch (format) {
+        PictureFormat.zoom => BoxFit.cover,
+        PictureFormat.stretch => BoxFit.fill,
+        _ => BoxFit.contain,
+      },
+      aspectRatio: switch (format) {
+        PictureFormat.wide => 16 / 9,
+        PictureFormat.classic => 4 / 3,
+        _ => null,
+      },
+    );

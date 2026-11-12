@@ -40,7 +40,17 @@ class _LiveScreenState extends State<LiveScreen> {
   String _group = _all;
   bool _panel = false;
   bool _previewOn = true;
-  GuideSelection? _selection;
+
+  /// Canale e programma sotto il cursore della guida. Cambia a ogni freccia:
+  /// aggiorna solo l'intestazione, non tutta la schermata.
+  final _selection = ValueNotifier<GuideSelection?>(null);
+
+  // Elenchi calcolati una volta per catalogo (le liste vere hanno migliaia
+  // di canali: rifarli a ogni tasto rallentava la guida sul box TV).
+  Catalog? _memoFor;
+  List<Channel> _allChannels = const [];
+  Map<String, Channel> _byKey = const {};
+  Map<String, List<Channel>> _byGroup = const {};
   DateTime _now = DateTime.now();
   late final Timer _clock;
   final _gridFocus = FocusNode(debugLabel: 'guida');
@@ -64,6 +74,7 @@ class _LiveScreenState extends State<LiveScreen> {
     _shell?.removeBackHandler(_onBack);
     _clock.cancel();
     _gridFocus.dispose();
+    _selection.dispose();
     super.dispose();
   }
 
@@ -75,60 +86,56 @@ class _LiveScreenState extends State<LiveScreen> {
     return false;
   }
 
-  List<Channel> _visible(Catalog c, UserStore user) {
-    final all = [
+  void _memo(Catalog c) {
+    if (identical(_memoFor, c)) return;
+    _memoFor = c;
+    _allChannels = [
       for (final ch in c.live.channels)
         if (!ch.hidden) ch,
     ];
+    _byKey = {for (final ch in _allChannels) ch.key: ch};
+    final byGroup = <String, List<Channel>>{};
+    for (final ch in _allChannels) {
+      (byGroup[ch.group] ??= []).add(ch);
+    }
+    _byGroup = byGroup;
+  }
+
+  List<Channel> _visible(UserStore user) {
     switch (_group) {
       case _all:
-        return all;
+        return _allChannels;
       case _favorites:
         return [
-          for (final ch in all)
+          for (final ch in _allChannels)
             if (user.isFavorite(UserKey.channel(ch.key))) ch,
         ];
       case _recent:
-        final byKey = {for (final ch in all) ch.key: ch};
-        return [
-          for (final k in user.recentChannels)
-            if (byKey[k] != null) byKey[k]!,
-        ];
+        return [for (final k in user.recentChannels) ?_byKey[k]];
       default:
-        return [
-          for (final ch in all)
-            if (ch.group == _group) ch,
-        ];
+        return _byGroup[_group] ?? const [];
     }
   }
 
-  List<(String, int)> _groups(Catalog c, UserStore user) {
-    final all = [
-      for (final ch in c.live.channels)
-        if (!ch.hidden) ch,
-    ];
-    final counts = <String, int>{};
-    for (final ch in all) {
-      counts[ch.group] = (counts[ch.group] ?? 0) + 1;
-    }
-    final fav = all
-        .where((ch) => user.isFavorite(UserKey.channel(ch.key)))
+  List<(String, int)> _groups(UserStore user) {
+    // Preferiti e recenti si contano dall'elenco dell'utente (pochi), non
+    // scorrendo tutti i canali.
+    final fav = user.favorites
+        .where((k) => k.startsWith('ch:') && _byKey.containsKey(k.substring(3)))
         .length;
-    final rec = user.recentChannels
-        .where((k) => all.any((ch) => ch.key == k))
-        .length;
+    final rec = user.recentChannels.where(_byKey.containsKey).length;
     return [
-      (_all, all.length),
+      (_all, _allChannels.length),
       if (fav > 0) (_favorites, fav),
       if (rec > 0) (_recent, rec),
-      for (final e in counts.entries) (e.key, e.value),
+      for (final e in _byGroup.entries) (e.key, e.value.length),
     ];
   }
 
   void _pick(String g) {
     setState(() {
       _group = g;
-      _selection = null;
+      _selection.value = null;
     });
     _closePanel();
   }
@@ -183,7 +190,7 @@ class _LiveScreenState extends State<LiveScreen> {
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, 'edit'),
-            child: const _ActionRow(Icons.edit_outlined, 'Nome, logo e gruppo'),
+            child: const _ActionRow(Icons.edit_outlined, 'Modifica canale'),
           ),
         ],
       ),
@@ -221,9 +228,10 @@ class _LiveScreenState extends State<LiveScreen> {
       builder: (context, _) {
         final lib = app.library;
         if (lib == null) return const SizedBox.shrink();
-        final groups = _groups(lib.catalog, app.user);
+        _memo(lib.catalog);
+        final groups = _groups(app.user);
         if (!groups.any((g) => g.$1 == _group)) _group = _all;
-        final channels = _visible(lib.catalog, app.user);
+        final channels = _visible(app.user);
         final guide = app.epg.guide.value;
         return VistaLayout.of(context).compact
             ? _phone(context, channels, groups, guide)
@@ -242,10 +250,6 @@ class _LiveScreenState extends State<LiveScreen> {
   ) {
     final app = AppScope.of(context);
     final height = MediaQuery.sizeOf(context).height;
-    final selection =
-        _selection != null && channels.contains(_selection!.channel)
-        ? _selection
-        : null;
     return Stack(
       children: [
         Positioned.fill(
@@ -271,18 +275,24 @@ class _LiveScreenState extends State<LiveScreen> {
                       children: [
                         SizedBox(
                           height: (height * 0.36).clamp(170.0, 300.0),
-                          child: ValueListenableBuilder<String>(
-                            valueListenable: app.epg.status,
-                            builder: (context, status, _) => GuideHeader(
-                              selection: selection,
-                              now: _now,
-                              category: _groupLabel(_group),
-                              status: status,
-                              preview: LivePreview(
-                                channel: selection?.channel ?? channels.first,
-                                enabled: _previewOn && !_panel,
-                              ),
-                            ),
+                          child: ListenableBuilder(
+                            listenable: Listenable.merge([
+                              app.epg.status,
+                              _selection,
+                            ]),
+                            builder: (context, _) {
+                              final selection = _selection.value;
+                              return GuideHeader(
+                                selection: selection,
+                                now: _now,
+                                category: _groupLabel(_group),
+                                status: app.epg.status.value,
+                                preview: LivePreview(
+                                  channel: selection?.channel ?? channels.first,
+                                  enabled: _previewOn && !_panel,
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -292,8 +302,7 @@ class _LiveScreenState extends State<LiveScreen> {
                             guide: guide,
                             now: _now,
                             focusNode: _gridFocus,
-                            onSelectionChanged: (s) =>
-                                setState(() => _selection = s),
+                            onSelectionChanged: (s) => _selection.value = s,
                             onPlay: (c) => _play(channels, c),
                             onEdit: _actions,
                             onOpenMenu: _openPanel,

@@ -474,6 +474,8 @@ class _Row extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Row(
+        // Canale e programmi alti uguali: tutta l'altezza della riga.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Colonna del canale
           GestureDetector(

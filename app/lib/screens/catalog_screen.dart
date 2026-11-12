@@ -57,11 +57,15 @@ class _Item {
   final int? year;
   final String rating;
   final DateTime? added;
+
+  /// Titolo in minuscolo per l'ordine alfabetico, calcolato una volta sola.
+  late final String sortTitle = title.toLowerCase();
   int order; // posizione nella fonte, per "aggiunti di recente" senza data
   final Movie? movie;
   final Series? series;
 
-  double get ratingValue => double.tryParse(rating.replaceAll(',', '.')) ?? 0;
+  late final double ratingValue =
+      double.tryParse(rating.replaceAll(',', '.')) ?? 0;
 }
 
 /// Film o serie: categorie (a lato su TV/PC, in alto su telefono),
@@ -82,12 +86,19 @@ class _CatalogScreenState extends State<CatalogScreen> {
   List<_Item> _items = const [];
   List<(String, int)> _groups = const [];
 
+  // Elenco mostrato per (categoria, ordine): riordinare decine di migliaia di
+  // titoli a ogni ridisegno (es. ogni volta che si salva l'avanzamento di un
+  // film) bloccava l'interfaccia.
+  (String, _Sort)? _shownFor;
+  List<_Item> _shown = const [];
+
   bool get _movies => widget.kind == CatalogKind.movies;
   String get _title => _movies ? 'Film' : 'Serie TV';
 
   void _memo(Catalog c) {
     if (identical(_memoFor, c)) return;
     _memoFor = c;
+    _shownFor = null;
     _items = _movies
         ? [for (final m in c.movies) _Item.movie(m)]
         : [for (final s in c.series) _Item.series(s)];
@@ -102,6 +113,11 @@ class _CatalogScreenState extends State<CatalogScreen> {
   }
 
   List<_Item> _visible(UserStore user) {
+    // "La mia lista" e "In corso" dipendono dai dati dell'utente: sempre
+    // ricalcolate (sono poche). Le altre si ricalcolano solo se cambiano
+    // catalogo, categoria o ordine.
+    final userBased = _group == _myList || _group == _inProgress;
+    if (!userBased && _shownFor == (_group, _sort)) return _shown;
     final list = switch (_group) {
       _all => [..._items],
       _myList => [
@@ -124,13 +140,15 @@ class _CatalogScreenState extends State<CatalogScreen> {
           return c != 0 ? c : b.order.compareTo(a.order);
         });
       case _Sort.title:
-        list.sort(
-          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-        );
+        list.sort((a, b) => a.sortTitle.compareTo(b.sortTitle));
       case _Sort.year:
         list.sort((a, b) => (b.year ?? 0).compareTo(a.year ?? 0));
       case _Sort.rating:
         list.sort((a, b) => b.ratingValue.compareTo(a.ratingValue));
+    }
+    if (!userBased) {
+      _shownFor = (_group, _sort);
+      _shown = list;
     }
     return list;
   }

@@ -140,7 +140,6 @@ class _ServicesScreenState extends State<ServicesScreen> {
     final t = Theme.of(context).textTheme;
     final tmdb = AppScope.of(context).tmdb;
     return Glass(
-      blur: false,
       radius: VistaRadius.card,
       padding: const EdgeInsets.all(18),
       child: Column(

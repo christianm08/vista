@@ -4,12 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 import '../app_scope.dart';
 import '../data/source_store.dart' show redactError;
 import '../data/user_store.dart';
+import '../data/window_mode.dart';
 import '../player/options_panel.dart';
 import '../player/stream_picker.dart';
 import '../player/video.dart';
@@ -25,6 +25,8 @@ import '../widgets/focus_card.dart';
 /// Telecomando: su/giù o canale ± cambiano canale e mostrano la barra con il
 /// programma; OK apre l'elenco dei canali sopra il video; destra/sinistra
 /// mostrano la barra con la scelta del flusso; Indietro chiude o esce.
+/// I numeri portano al canale con quel numero; il tasto "canale precedente"
+/// (o Backspace sul PC) torna al canale di prima.
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
     super.key,
@@ -46,6 +48,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
   static const _bannerTimeout = Duration(seconds: 5);
   static const _listRow = 64.0;
 
+  /// Nuovi tentativi sullo stesso flusso prima di passare al successivo.
+  static const _maxRetries = 2;
+  static const _typingTimeout = Duration(milliseconds: 1600);
+
+  static final _digits = {
+    for (final (i, k) in [
+      LogicalKeyboardKey.digit0,
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+      LogicalKeyboardKey.digit5,
+      LogicalKeyboardKey.digit6,
+      LogicalKeyboardKey.digit7,
+      LogicalKeyboardKey.digit8,
+      LogicalKeyboardKey.digit9,
+    ].indexed)
+      k: i,
+    for (final (i, k) in [
+      LogicalKeyboardKey.numpad0,
+      LogicalKeyboardKey.numpad1,
+      LogicalKeyboardKey.numpad2,
+      LogicalKeyboardKey.numpad3,
+      LogicalKeyboardKey.numpad4,
+      LogicalKeyboardKey.numpad5,
+      LogicalKeyboardKey.numpad6,
+      LogicalKeyboardKey.numpad7,
+      LogicalKeyboardKey.numpad8,
+      LogicalKeyboardKey.numpad9,
+    ].indexed)
+      k: i,
+  };
+
   final _player = Player(
     configuration: const PlayerConfiguration(
       logLevel: kDebugMode ? MPVLogLevel.warn : MPVLogLevel.error,
@@ -57,8 +92,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final _listFocus = FocusNode(debugLabel: 'canale corrente nell\'elenco');
   final _listScroll = ScrollController();
 
+  /// Primo pulsante della barra (preferiti): Giù col telecomando ci arriva.
+  final _firstChip = FocusNode(debugLabel: 'primo pulsante della barra');
+  bool _chipsFocused = false;
+
+  /// Canali fra cui si fa zapping: quelli da cui si è partiti, oppure tutti
+  /// se si digita il numero di un canale che non è fra questi.
+  late List<Channel> _channels = widget.channels;
   late int _channelIndex = widget.initialIndex;
   late StreamPicker _picker;
+  Channel? _tuned;
+  Channel? _previous;
+  int _attempt = 0;
+  String _typed = '';
+  Timer? _typingTimer;
+  Timer? _retryTimer;
   Timer? _watchdog;
   Timer? _bannerTimer;
   bool _banner = true;
@@ -68,32 +116,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int? _height;
   DateTime _now = DateTime.now();
 
-  Channel get _channel => widget.channels[_channelIndex];
+  Channel get _channel => _channels[_channelIndex];
   late final UserStore _user;
+
+  /// Tutti i canali visibili della fonte.
+  List<Channel> get _allChannels => [
+    for (final c
+        in AppScope.of(context).library?.catalog.live.channels ??
+            const <Channel>[])
+      if (!c.hidden) c,
+  ];
+
+  void _notify(String text) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(duration: const Duration(seconds: 2), content: Text(text)),
+      );
+  }
 
   bool get _favorite => _user.isFavorite(UserKey.channel(_channel.key));
 
   void _toggleFavorite() {
     _user.toggleFavorite(UserKey.channel(_channel.key));
     setState(() {});
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 2),
-          content: Text(
-            _favorite
-                ? '${_channel.name} aggiunto ai preferiti'
-                : '${_channel.name} tolto dai preferiti',
-          ),
-        ),
-      );
+    _notify(
+      _favorite
+          ? '${_channel.name} aggiunto ai preferiti'
+          : '${_channel.name} tolto dai preferiti',
+    );
   }
 
   @override
   void initState() {
     super.initState();
     _user = AppScope.of(context).user;
+    _user.addListener(_onUserChanged);
     _subs
       ..add(
         _player.stream.tracks.listen((t) {
@@ -140,12 +198,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _onFrames() {
     _watchdog?.cancel();
+    _attempt = 0; // se si blocca di nuovo, si riprova da capo
     if (mounted && !_playing) setState(() => _playing = true);
+  }
+
+  /// Formato dell'immagine cambiato (anche da un altro player).
+  void _onUserChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _user.removeListener(_onUserChanged);
     _watchdog?.cancel();
+    _retryTimer?.cancel();
+    _typingTimer?.cancel();
     _bannerTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
@@ -153,23 +220,96 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _player.dispose();
     _rootFocus.dispose();
     _listFocus.dispose();
+    _firstChip.dispose();
     _listScroll.dispose();
     super.dispose();
   }
 
   void _tuneChannel(int i) {
+    final old = _tuned;
     _channelIndex = i;
     final key = _channel.key;
+    if (old != null && old.key != key) _previous = old;
+    _tuned = _channel;
     // Dopo il frame: chi ascolta (la home) non si ridisegna durante il build.
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _user.channelWatched(key),
     );
     _picker = StreamPicker(_channel.streams);
     _showBanner();
+    _openFresh();
+  }
+
+  /// Apre il flusso scelto ripartendo dal primo tentativo.
+  void _openFresh() {
+    _attempt = 0;
     _open();
   }
 
+  /// Porta su un canale anche se non è fra quelli dello zapping corrente
+  /// (allora lo zapping passa a tutti i canali).
+  void _tuneTo(Channel c) {
+    var i = _channels.indexWhere((x) => x.key == c.key);
+    if (i < 0) {
+      final all = _allChannels;
+      i = all.indexWhere((x) => x.key == c.key);
+      if (i < 0) return;
+      _channels = all;
+    }
+    if (i == _channelIndex && _channels[i].key == _tuned?.key) {
+      _showBanner();
+    } else {
+      _tuneChannel(i);
+    }
+  }
+
+  void _goPrevious() {
+    final p = _previous;
+    if (p == null) {
+      _notify('Nessun canale precedente');
+      return;
+    }
+    _tuneTo(p);
+  }
+
+  // --- numero del canale ---------------------------------------------------
+
+  /// Il canale con un certo numero: prima fra quelli dello zapping, poi fra
+  /// tutti.
+  Channel? _byNumber(int n) =>
+      _channels.where((c) => c.number == n).firstOrNull ??
+      _allChannels.where((c) => c.number == n).firstOrNull;
+
+  void _typeDigit(int d) {
+    _typingTimer?.cancel();
+    setState(() => _typed = _typed.length >= 4 ? '$d' : '$_typed$d');
+    _typingTimer = Timer(_typingTimeout, _commitTyped);
+  }
+
+  void _eraseDigit() {
+    _typingTimer?.cancel();
+    setState(() => _typed = _typed.substring(0, _typed.length - 1));
+    if (_typed.isNotEmpty) {
+      _typingTimer = Timer(_typingTimeout, _commitTyped);
+    }
+  }
+
+  void _commitTyped() {
+    _typingTimer?.cancel();
+    final n = int.tryParse(_typed);
+    if (!mounted) return;
+    setState(() => _typed = '');
+    if (n == null) return;
+    final c = _byNumber(n);
+    if (c == null) {
+      _notify('Nessun canale con il numero $n');
+    } else {
+      _tuneTo(c);
+    }
+  }
+
   void _open() {
+    _retryTimer?.cancel();
     setState(() {
       _message = null;
       _height = null;
@@ -186,14 +326,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _onFail(String why) {
     if (!mounted) return;
+    // mpv può segnalare lo stesso errore più volte: un tentativo alla volta.
+    if (_retryTimer?.isActive ?? false) return;
     _watchdog?.cancel();
-    if (_picker.fail()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 2),
-          content: Text('Flusso non disponibile ($why): provo il successivo'),
-        ),
+    // Prima si riprova lo stesso flusso (cadute di rete, server lento)…
+    if (_attempt < _maxRetries) {
+      _attempt++;
+      _notify(
+        'Riconnessione a ${_channel.name}… '
+        '(tentativo ${_attempt + 1} di ${_maxRetries + 1})',
       );
+      setState(() {
+        _playing = false;
+        _message = null;
+      });
+      _retryTimer = Timer(Duration(seconds: 2 * _attempt), () {
+        if (mounted) _open();
+      });
+      return;
+    }
+    // …poi si passa al flusso successivo, se c'è.
+    _attempt = 0;
+    if (_picker.fail()) {
+      _notify('Flusso non disponibile ($why): provo il successivo');
       _open();
     } else {
       _player.stop();
@@ -214,6 +369,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
     _bannerTimer?.cancel();
     _bannerTimer = Timer(_bannerTimeout, () {
+      // Mentre si sceglie un pulsante della barra, la barra resta aperta.
+      if (mounted && _chipsFocused) {
+        _showBanner();
+        return;
+      }
       if (mounted && _message == null) {
         setState(() => _banner = false);
         if (!_list) _focusRoot();
@@ -291,19 +451,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _banner = false;
     });
     _watchdog?.cancel();
+    _retryTimer?.cancel();
     await _player.stop();
     if (!mounted) return;
     final picked = await Navigator.of(context).push<Channel>(
       MaterialPageRoute(
         builder: (_) => MultiviewScreen(
-          channels: widget.channels,
+          channels: _channels,
           initial: [_channel],
           guide: widget.guide,
         ),
       ),
     );
     if (!mounted) return;
-    final i = picked == null ? -1 : widget.channels.indexOf(picked);
+    final i = picked == null ? -1 : _channels.indexOf(picked);
     _tuneChannel(i >= 0 ? i : _channelIndex);
     // Dopo l'animazione di ritorno la route è di nuovo in primo piano.
     Future.delayed(const Duration(milliseconds: 350), _focusRoot);
@@ -321,7 +482,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             selected: _picker.auto,
             onTap: () {
               _picker.reset();
-              _open();
+              _openFresh();
               done();
             },
           ),
@@ -332,13 +493,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
               selected: !_picker.auto && _picker.index == i,
               onTap: () {
                 _picker.select(i);
-                _open();
+                _openFresh();
                 done();
               },
             ),
         ]),
       ...trackSections(_player, _tracks, _track, onPicked: done),
+      pictureSection(_user, onPicked: done),
       PlayerOptionSection('Altro', [
+        if (_previous case final p?)
+          PlayerOption(
+            icon: Icons.undo_rounded,
+            label: 'Canale precedente',
+            detail: '${p.number} · ${p.name}',
+            onTap: () {
+              done();
+              _goPrevious();
+            },
+          ),
         PlayerOption(
           icon: Icons.grid_view_rounded,
           label: 'Multiview',
@@ -358,20 +530,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _zap(int delta) {
-    final n = widget.channels.length;
+    final n = _channels.length;
     _tuneChannel((_channelIndex + delta + n) % n);
   }
+
+  bool _isOk(LogicalKeyboardKey k) =>
+      k == LogicalKeyboardKey.select ||
+      k == LogicalKeyboardKey.enter ||
+      k == LogicalKeyboardKey.numpadEnter;
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
     if (e is KeyUpEvent || _list || _options) return KeyEventResult.ignored;
     final k = e.logicalKey;
+    // Numero del canale: si digita, e dopo una breve pausa (o con OK) si va.
+    if (_digits[k] case final d?) {
+      if (e is KeyDownEvent) _typeDigit(d);
+      return KeyEventResult.handled;
+    }
+    if (_typed.isNotEmpty) {
+      if (e is KeyDownEvent && _isOk(k)) {
+        _commitTyped();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.backspace) {
+        _eraseDigit();
+        return KeyEventResult.handled;
+      }
+    }
+    // Canale precedente: tasto apposito del telecomando, Backspace sul PC.
+    if (k == LogicalKeyboardKey.mediaLast ||
+        k == LogicalKeyboardKey.backspace) {
+      if (e is KeyDownEvent) _goPrevious();
+      return KeyEventResult.handled;
+    }
     // Tasto Menu: il menu del player (flusso, audio, sottotitoli, Multiview).
     if (k == LogicalKeyboardKey.contextMenu) {
       if (e is KeyDownEvent) _openOptions();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.escape) {
-      if (e is KeyDownEvent) Navigator.of(context).maybePop();
+      // A schermo intero Esc prima ne esce, poi torna indietro.
+      if (e is KeyDownEvent && !WindowMode.leaveOnEscape()) {
+        Navigator.of(context).maybePop();
+      }
       return KeyEventResult.handled;
     }
     // OK apre sempre l'elenco dei canali, anche con la barra visibile, a meno
@@ -418,6 +619,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _zap(1);
         return KeyEventResult.handled;
       }
+      // Telecomando: Giù porta sui pulsanti della barra (preferiti, menu,
+      // Multiview, canale precedente, flussi); Su li lascia.
+      if (k == LogicalKeyboardKey.arrowDown && _rootFocus.hasPrimaryFocus) {
+        _showBanner();
+        _firstChip.requestFocus();
+        return KeyEventResult.handled;
+      }
       _showBanner(); // qualsiasi tasto tiene aperta la barra
     }
     return KeyEventResult.ignored;
@@ -452,7 +660,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 _banner ? _hideBanner() : _showBanner();
               }
             },
-            onDoubleTap: _openList,
+            // Doppio clic: schermo intero sul PC, elenco canali al tocco.
+            onDoubleTap: WindowMode.supported ? WindowMode.toggle : _openList,
             onVerticalDragEnd: (d) {
               final v = d.primaryVelocity ?? 0;
               if (v.abs() > 300) _zap(v < 0 ? 1 : -1);
@@ -460,10 +669,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Video(controller: _video, controls: NoVideoControls),
+                formattedVideo(_video, _user.picture),
                 if (!_playing && _message == null)
                   const Center(child: CircularProgressIndicator()),
                 if (_message != null) _buildMessage(),
+                if (_typed.isNotEmpty) _buildTyped(),
                 AnimatedOpacity(
                   opacity: _banner ? 1 : 0,
                   duration: const Duration(milliseconds: 200),
@@ -478,6 +688,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             alignment: Alignment.topLeft,
                             child: PlayerBackButton(),
                           ),
+                        const Align(
+                          alignment: Alignment.topRight,
+                          child: FullScreenButton(),
+                        ),
                       ],
                     ),
                   ),
@@ -497,10 +711,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// Il numero che si sta digitando, con il canale che gli corrisponde.
+  Widget _buildTyped() {
+    final t = Theme.of(context).textTheme;
+    final match = _byNumber(int.parse(_typed));
+    return Align(
+      alignment: Alignment.topRight,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Glass(
+            fill: const Color(0xE610161C),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _typed,
+                  style: t.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: VistaColors.accent,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                if (match != null) ...[
+                  ChannelLogo(channel: match, size: 44),
+                  const SizedBox(width: 12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 260),
+                    child: Text(
+                      match.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ] else
+                  Text(
+                    'Nessun canale',
+                    style: t.titleMedium?.copyWith(
+                      color: VistaColors.textTertiary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMessage() {
     return Center(
       child: Glass(
-        blur: false,
         padding: const EdgeInsets.all(24),
         fill: const Color(0xCC10161C),
         child: ConstrainedBox(
@@ -644,42 +910,63 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ],
               ...[
                 const SizedBox(height: 14),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _streamChip(
-                        _favorite ? '★ Preferito' : '☆ Aggiungi ai preferiti',
-                        false,
-                        () {
-                          _toggleFavorite();
-                          _showBanner();
-                        },
-                      ),
-                      _streamChip(
-                        '⚙ Audio, sottotitoli e flussi',
-                        false,
-                        _openOptions,
-                      ),
-                      _streamChip('▦ Multiview', false, _openMultiview),
-                      if (_picker.streams.length > 1)
-                        _streamChip('Auto', _picker.auto, () {
-                          _picker.reset();
-                          _open();
-                          _showBanner();
-                        }),
-                      if (_picker.streams.length > 1)
-                        for (var i = 0; i < _picker.streams.length; i++)
-                          _streamChip(
-                            _picker.streams[i].quality.label,
-                            !_picker.auto && _picker.index == i,
-                            () {
-                              _picker.select(i);
-                              _open();
-                              _showBanner();
-                            },
-                          ),
-                    ],
+                Focus(
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  onFocusChange: (v) => _chipsFocused = v,
+                  onKeyEvent: (_, e) {
+                    if (e is KeyUpEvent) return KeyEventResult.ignored;
+                    if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      _rootFocus.requestFocus();
+                      _showBanner();
+                      return KeyEventResult.handled;
+                    }
+                    // Sotto i pulsanti non c'è altro.
+                    if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _streamChip(
+                          _favorite ? '★ Preferito' : '☆ Aggiungi ai preferiti',
+                          false,
+                          () {
+                            _toggleFavorite();
+                            _showBanner();
+                          },
+                          focusNode: _firstChip,
+                        ),
+                        _streamChip(
+                          '⚙ Audio, sottotitoli e flussi',
+                          false,
+                          _openOptions,
+                        ),
+                        _streamChip('▦ Multiview', false, _openMultiview),
+                        if (_previous case final p?)
+                          _streamChip('↩ ${p.name}', false, _goPrevious),
+                        if (_picker.streams.length > 1)
+                          _streamChip('Auto', _picker.auto, () {
+                            _picker.reset();
+                            _openFresh();
+                            _showBanner();
+                          }),
+                        if (_picker.streams.length > 1)
+                          for (var i = 0; i < _picker.streams.length; i++)
+                            _streamChip(
+                              _picker.streams[i].quality.label,
+                              !_picker.auto && _picker.index == i,
+                              () {
+                                _picker.select(i);
+                                _openFresh();
+                                _showBanner();
+                              },
+                            ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -690,10 +977,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _streamChip(String label, bool selected, VoidCallback onTap) {
+  Widget _streamChip(
+    String label,
+    bool selected,
+    VoidCallback onTap, {
+    FocusNode? focusNode,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: FocusCard(
+        focusNode: focusNode,
         radius: 999,
         selected: selected,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -747,7 +1040,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           controller: _listScroll,
                           itemExtent: _listRow,
                           padding: const EdgeInsets.symmetric(horizontal: 10),
-                          itemCount: widget.channels.length,
+                          itemCount: _channels.length,
                           itemBuilder: (_, i) => _listItem(i),
                         ),
                       ),
@@ -771,7 +1064,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _listItem(int i) {
     final t = Theme.of(context).textTheme;
-    final c = widget.channels[i];
+    final c = _channels[i];
     final now = widget.guide?.nowOn(c, now: _now);
     final playing = i == _channelIndex;
     return Padding(

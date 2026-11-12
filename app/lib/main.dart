@@ -8,6 +8,7 @@ import 'data/epg_store.dart';
 import 'data/source_store.dart';
 import 'data/tmdb_store.dart';
 import 'data/user_store.dart';
+import 'data/window_mode.dart';
 import 'screens/import_screen.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
@@ -15,6 +16,11 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  // Più locandine decodificate in memoria: tornando indietro o scorrendo le
+  // righe non si ridecodificano (il default è 100 MB / 1000 immagini).
+  PaintingBinding.instance.imageCache
+    ..maximumSizeBytes = 192 << 20
+    ..maximumSize = 2000;
   await Future.wait([ChannelLogos.init(), Device.init()]);
   final user = UserStore();
   final tmdb = TmdbStore();
@@ -73,17 +79,22 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
       child: MaterialApp(
         title: 'Vista',
         debugShowCheckedModeBanner: false,
+        // Grafico dei tempi di disegno, solo per le prove: --dart-define=SHOW_PERF=true
+        showPerformanceOverlay: const bool.fromEnvironment('SHOW_PERF'),
         theme: buildVistaTheme(),
         scrollBehavior: const VistaScrollBehavior(),
         navigatorKey: _nav,
         // Su PC Esc torna indietro in tutte le schermate (la shell e i
-        // player lo gestiscono prima a modo loro).
+        // player lo gestiscono prima a modo loro); a schermo intero Esc ne
+        // esce. F11 attiva e disattiva lo schermo intero ovunque.
         builder: (context, child) => CallbackShortcuts(
           bindings: {
-            const SingleActivator(LogicalKeyboardKey.escape): () =>
-                _nav.currentState?.maybePop(),
+            const SingleActivator(LogicalKeyboardKey.escape): () {
+              if (!WindowMode.leaveOnEscape()) _nav.currentState?.maybePop();
+            },
+            const SingleActivator(LogicalKeyboardKey.f11): WindowMode.toggle,
           },
-          child: VistaBackground(child: child!),
+          child: TvCanvas(child: VistaBackground(child: child!)),
         ),
         home: _Root(store: _store),
       ),

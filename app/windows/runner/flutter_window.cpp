@@ -1,5 +1,7 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -27,6 +29,25 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "vista/window",
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() == "setFullScreen") {
+          const auto* on = std::get_if<bool>(call.arguments());
+          SetFullScreen(on != nullptr && *on);
+          result->Success(flutter::EncodableValue(full_screen_));
+        } else if (call.method_name() == "isFullScreen") {
+          result->Success(flutter::EncodableValue(full_screen_));
+        } else {
+          result->NotImplemented();
+        }
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -39,7 +60,34 @@ bool FlutterWindow::OnCreate() {
   return true;
 }
 
+void FlutterWindow::SetFullScreen(bool on) {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr || on == full_screen_) {
+    return;
+  }
+  if (on) {
+    saved_style_ = GetWindowLong(hwnd, GWL_STYLE);
+    saved_placement_.length = sizeof(WINDOWPLACEMENT);
+    GetWindowPlacement(hwnd, &saved_placement_);
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                   &monitor);
+    const RECT& r = monitor.rcMonitor;
+    SetWindowLong(hwnd, GWL_STYLE, saved_style_ & ~WS_OVERLAPPEDWINDOW);
+    SetWindowPos(hwnd, HWND_TOP, r.left, r.top, r.right - r.left,
+                 r.bottom - r.top, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+  } else {
+    SetWindowLong(hwnd, GWL_STYLE, saved_style_);
+    SetWindowPlacement(hwnd, &saved_placement_);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
+                     SWP_FRAMECHANGED);
+  }
+  full_screen_ = on;
+}
+
 void FlutterWindow::OnDestroy() {
+  window_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

@@ -87,11 +87,13 @@ String epgNameKey(String name) => logoKey(normalizeName(name).key);
 
 /// Legge un file XMLTV a flusso (anche compresso con gzip, riconosciuto dai
 /// primi byte) tenendo solo i programmi fra [from] e [to]: le guide complete
-/// pesano decine di MB.
+/// pesano decine di MB. [shift] corregge le guide con gli orari sbagliati
+/// (si somma a inizio e fine di ogni programma).
 Future<EpgData> parseXmltv(
   Stream<List<int>> bytes, {
   DateTime? from,
   DateTime? to,
+  Duration shift = Duration.zero,
 }) async {
   final events = (await _decompressed(bytes))
       .transform(utf8.decoder)
@@ -118,8 +120,8 @@ Future<EpgData> parseXmltv(
         case 'programme':
           cur = null;
           if (e.isSelfClosing) break;
-          final start = parseXmltvTime(_attr(e, 'start'));
-          final stop = parseXmltvTime(_attr(e, 'stop'));
+          final start = parseXmltvTime(_attr(e, 'start'))?.add(shift);
+          final stop = parseXmltvTime(_attr(e, 'stop'))?.add(shift);
           final channel = _attr(e, 'channel');
           if (start == null || channel.isEmpty) break;
           final end = stop ?? start.add(const Duration(minutes: 30));

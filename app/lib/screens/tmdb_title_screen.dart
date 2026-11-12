@@ -233,7 +233,7 @@ class _TmdbTitleScreenState extends State<TmdbTitleScreen> {
         offers.where((o) => mine.contains(o.$1.id)).firstOrNull ??
         offers.firstOrNull;
 
-    final posterW = layout.compact ? 110.0 : (layout.tv ? 170.0 : 210.0);
+    final posterW = layout.compact ? 110.0 : 210.0;
     final poster = SizedBox(
       width: posterW,
       child: AspectRatio(

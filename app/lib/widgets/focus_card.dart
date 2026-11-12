@@ -108,9 +108,11 @@ class _FocusCardState extends State<FocusCard> {
             decoration: BoxDecoration(
               color: fill,
               borderRadius: r,
+              // Col focus: contorno bianco; se la scheda è già selezionata
+              // (fondo bianco) il contorno è arancio, sennò non si vedrebbe.
               border: Border.all(
                 color: _focused
-                    ? Colors.white
+                    ? (widget.selected ? VistaColors.accent : Colors.white)
                     : (widget.outline
                           ? VistaColors.glassBorder
                           : Colors.transparent),
