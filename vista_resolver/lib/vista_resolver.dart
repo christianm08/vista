@@ -9,6 +9,7 @@ export 'src/classify.dart';
 export 'src/epg.dart';
 export 'src/logos.dart';
 export 'src/m3u_parser.dart';
+export 'src/merge.dart';
 export 'src/models.dart';
 export 'src/normalize.dart';
 export 'src/resolver.dart';

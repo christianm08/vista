@@ -95,6 +95,9 @@ class UserStore extends ChangeNotifier {
   final _services = <int>[]; // servizi di streaming scelti (id TMDB)
   final _saved = <String, SavedTitle>{}; // titoli TMDB in "La mia lista"
   PictureFormat _picture = PictureFormat.fit;
+  AutoRefresh _autoRefresh = AutoRefresh.day;
+  final _softwareDecode = <String>{}; // canali con decodifica software
+  final _reminders = <Reminder>[];
   bool _startOnLastChannel = false;
   Timer? _saveTimer;
 
@@ -104,6 +107,59 @@ class UserStore extends ChangeNotifier {
   void setPicture(PictureFormat p) {
     if (p == _picture) return;
     _picture = p;
+    _changed();
+  }
+
+  /// Promemoria dei programmi, il più vicino per primo.
+  List<Reminder> get reminders => List.unmodifiable(_reminders);
+
+  bool hasReminder(String channelKey, DateTime start) =>
+      _reminders.any((r) => r.channelKey == channelKey && r.start == start);
+
+  void addReminder(Reminder r) {
+    if (hasReminder(r.channelKey, r.start)) return;
+    _reminders
+      ..add(r)
+      ..sort((a, b) => a.start.compareTo(b.start));
+    _changed();
+  }
+
+  void removeReminder(String channelKey, DateTime start) {
+    _reminders.removeWhere(
+      (r) => r.channelKey == channelKey && r.start == start,
+    );
+    _changed();
+  }
+
+  /// I promemoria dei programmi che iniziano entro [ahead]: li toglie
+  /// dall'elenco e li restituisce (da mostrare).
+  List<Reminder> takeDue({Duration ahead = const Duration(minutes: 1)}) {
+    final limit = DateTime.now().add(ahead);
+    final due = [
+      for (final r in _reminders)
+        if (!r.start.isAfter(limit)) r,
+    ];
+    if (due.isEmpty) return const [];
+    _reminders.removeWhere(due.contains);
+    _changed();
+    return due;
+  }
+
+  /// Il canale va decodificato in software (se in hardware scatta).
+  bool softwareDecode(String channelKey) =>
+      _softwareDecode.contains(channelKey);
+
+  void setSoftwareDecode(String channelKey, bool on) {
+    on ? _softwareDecode.add(channelKey) : _softwareDecode.remove(channelKey);
+    _changed();
+  }
+
+  /// Ogni quanto riscaricare le liste da sole.
+  AutoRefresh get autoRefresh => _autoRefresh;
+
+  void setAutoRefresh(AutoRefresh v) {
+    if (v == _autoRefresh) return;
+    _autoRefresh = v;
     _changed();
   }
 
@@ -173,6 +229,41 @@ class UserStore extends ChangeNotifier {
       if (!await f.exists()) return;
       final j = jsonDecode(await f.readAsString());
       if (j is! Map) return;
+      _read(j);
+      notifyListeners();
+    } on FormatException {
+      // File rovinato: si riparte da zero piuttosto che bloccare l'app.
+    } on FileSystemException {
+      // Idem.
+    }
+  }
+
+  /// Tutti i dati dell'utente (per il file e per il backup).
+  Map<String, dynamic> toJson() => {
+    'v': 1,
+    'fav': _favorites.toList(),
+    'recent': _recent,
+    'services': _services,
+    'saved': [for (final t in _saved.values) t.toJson()],
+    'progress': [for (final p in _progress.values) p.toJson()],
+    'prefs': {
+      'picture': _picture.name,
+      'startLast': _startOnLastChannel,
+      'autoRefresh': _autoRefresh.name,
+      'swdec': _softwareDecode.toList(),
+    },
+    'reminders': [for (final r in _reminders) r.toJson()],
+  };
+
+  /// Sostituisce tutti i dati con quelli di un backup e li salva.
+  Future<void> restore(Map<String, dynamic> j) async {
+    _read(j);
+    notifyListeners();
+    await flush();
+  }
+
+  void _read(Map<dynamic, dynamic> j) {
+    {
       _favorites
         ..clear()
         ..addAll([
@@ -209,12 +300,28 @@ class UserStore extends ChangeNotifier {
                 .firstOrNull ??
             PictureFormat.fit;
         _startOnLastChannel = prefs['startLast'] == true;
+        _autoRefresh =
+            AutoRefresh.values
+                .where((a) => a.name == prefs['autoRefresh'])
+                .firstOrNull ??
+            AutoRefresh.day;
+        _reminders
+          ..clear()
+          ..addAll([
+            for (final x in j['reminders'] as List? ?? const [])
+              if (Reminder.fromJson(x) case final r?)
+                // Quelli già passati da più di 10 minuti non servono più.
+                if (DateTime.now().difference(r.start) <
+                    const Duration(minutes: 10))
+                  r,
+          ]);
+        _softwareDecode
+          ..clear()
+          ..addAll([
+            for (final k in prefs['swdec'] as List? ?? const [])
+              if (k is String) k,
+          ]);
       }
-      notifyListeners();
-    } on FormatException {
-      // File rovinato: si riparte da zero piuttosto che bloccare l'app.
-    } on FileSystemException {
-      // Idem.
     }
   }
 
@@ -265,15 +372,7 @@ class UserStore extends ChangeNotifier {
 
   Future<void> flush() async {
     _saveTimer?.cancel();
-    final data = jsonEncode({
-      'v': 1,
-      'fav': _favorites.toList(),
-      'recent': _recent,
-      'services': _services,
-      'saved': [for (final t in _saved.values) t.toJson()],
-      'progress': [for (final p in _progress.values) p.toJson()],
-      'prefs': {'picture': _picture.name, 'startLast': _startOnLastChannel},
-    });
+    final data = jsonEncode(toJson());
     try {
       final f = await _file();
       final tmp = File('${f.path}.tmp');
@@ -289,6 +388,53 @@ class UserStore extends ChangeNotifier {
     _saveTimer?.cancel();
     super.dispose();
   }
+}
+
+/// Un promemoria: avvisa quando il programma sta per iniziare.
+class Reminder {
+  const Reminder({
+    required this.channelKey,
+    required this.channelName,
+    required this.title,
+    required this.start,
+  });
+
+  final String channelKey;
+  final String channelName;
+  final String title;
+  final DateTime start;
+
+  Map<String, dynamic> toJson() => {
+    'c': channelKey,
+    'n': channelName,
+    't': title,
+    's': start.millisecondsSinceEpoch,
+  };
+
+  static Reminder? fromJson(Object? j) {
+    if (j is! Map || j['c'] is! String || j['s'] is! int) return null;
+    return Reminder(
+      channelKey: j['c'] as String,
+      channelName: j['n'] as String? ?? '',
+      title: j['t'] as String? ?? '',
+      start: DateTime.fromMillisecondsSinceEpoch(j['s'] as int),
+    );
+  }
+}
+
+/// Ogni quanto riscaricare liste e account da soli.
+enum AutoRefresh {
+  off('Mai', null),
+  start('A ogni avvio', Duration.zero),
+  sixHours('Ogni 6 ore', Duration(hours: 6)),
+  halfDay('Ogni 12 ore', Duration(hours: 12)),
+  day('Ogni giorno', Duration(hours: 24));
+
+  const AutoRefresh(this.label, this.maxAge);
+  final String label;
+
+  /// Età oltre la quale una lista si riscarica (`null` = mai).
+  final Duration? maxAge;
 }
 
 /// Come riempire lo schermo con il video.

@@ -96,27 +96,30 @@ class EpgStore {
     if (lib != null) await _load(lib, ++_generation);
   }
 
-  /// URL delle guide per una fonte, in ordine di priorità.
-  List<Uri> urisFor(Library lib) => [
-    ?customUri.value,
-    defaultEpgUri,
-    ...switch (lib.source) {
-      XtreamSource(:final credentials) => [
-        Uri.parse('${credentials.server}/xmltv.php').replace(
-          queryParameters: {
-            'username': credentials.username,
-            'password': credentials.password,
-          },
-        ),
-      ],
-      M3uSource() => [
+  /// URL delle guide, in ordine di priorità: il link personale, epg.lat,
+  /// poi quelle di ogni fonte (Xtream `xmltv.php`, M3U `x-tvg-url`).
+  List<Uri> urisFor(Library lib) {
+    final seen = <String>{};
+    return [
+      for (final u in [
+        ?customUri.value,
+        defaultEpgUri,
+        for (final s in lib.sources)
+          if (s case XtreamSource(:final credentials))
+            Uri.parse('${credentials.server}/xmltv.php').replace(
+              queryParameters: {
+                'username': credentials.username,
+                'password': credentials.password,
+              },
+            ),
         for (final u in lib.catalog.live.report.epgUrl.split(','))
           if (Uri.tryParse(u.trim()) case final uri?
               when uri.isScheme('http') || uri.isScheme('https'))
             uri,
-      ],
-    },
-  ];
+      ])
+        if (seen.add(u.toString())) u,
+    ];
+  }
 
   void _onLibrary() {
     final lib = sources.library.value;

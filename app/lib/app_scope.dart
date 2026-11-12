@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 import 'data/epg_store.dart';
+import 'data/parental_store.dart';
 import 'data/source_store.dart';
 import 'data/tmdb_store.dart';
 import 'data/user_store.dart';
@@ -19,6 +21,7 @@ class AppScope extends InheritedWidget {
     required this.epg,
     required this.user,
     required this.tmdb,
+    required this.parental,
     required super.child,
   });
 
@@ -26,6 +29,9 @@ class AppScope extends InheritedWidget {
   final EpgStore epg;
   final UserStore user;
   final TmdbStore tmdb;
+
+  /// Controllo genitori (PIN).
+  final ParentalStore parental;
 
   static AppScope of(BuildContext context) {
     final s = context.getInheritedWidgetOfExactType<AppScope>();
@@ -41,7 +47,8 @@ class AppScope extends InheritedWidget {
       store != old.store ||
       epg != old.epg ||
       user != old.user ||
-      tmdb != old.tmdb;
+      tmdb != old.tmdb ||
+      parental != old.parental;
 }
 
 /// Azioni comuni: aprire una scheda, guardare un canale o un titolo.
@@ -63,8 +70,16 @@ abstract final class Nav {
     BuildContext context,
     List<Channel> list,
     Channel c,
-  ) {
+  ) async {
     final app = AppScope.of(context);
+    if (app.parental.isLocked(c) &&
+        !await app.parental.unlock(
+          context,
+          reason: '${c.name} è protetto dal PIN.',
+        )) {
+      return;
+    }
+    if (!context.mounted) return;
     final i = list.indexOf(c);
     return _push(
       context,
@@ -165,3 +180,14 @@ abstract final class Nav {
 
 String metaYearGroup(int? year, String group) =>
     [if (year != null) '$year', if (group.isNotEmpty) group].join(' · ');
+
+/// Il flusso da aprire nel player, con lo user-agent scelto per la sua fonte
+/// (se c'è).
+Media streamMedia(BuildContext context, String url, {Duration? start}) {
+  final ua = AppScope.of(context).store.userAgentFor(url);
+  return Media(
+    url,
+    start: start,
+    httpHeaders: ua == null ? null : {'User-Agent': ua},
+  );
+}

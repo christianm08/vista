@@ -67,6 +67,10 @@ class ImageDiskCache {
     return d;
   }
 
+  /// Dopo una pulizia della cartella: le richieste in corso non si
+  /// riusano.
+  void forget() => _inflight.clear();
+
   /// I byte dell'immagine: dal disco se c'è, altrimenti dalla rete (e poi
   /// salvata). Più richieste della stessa immagine ne fanno una sola.
   Future<Uint8List> bytes(String url) =>

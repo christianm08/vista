@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 import '../data/channel_logos.dart';
+import '../app_scope.dart';
 import '../data/image_cache.dart';
 import '../data/source_store.dart';
 import '../theme.dart';
+import '../widgets/channel_dialogs.dart';
 import '../widgets/channel_logo.dart';
 import '../widgets/channel_tile.dart';
 import '../widgets/focus_card.dart';
@@ -94,13 +96,107 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
     super.dispose();
   }
 
-  /// Gruppi della lista nell'ordine in cui compaiono, con quanti canali hanno.
+  /// Categorie nell'ordine scelto dall'utente (le altre come nella lista),
+  /// con quanti canali hanno.
   List<(String, int)> _groups(List<Channel> all) {
     final counts = <String, int>{};
     for (final c in all) {
       counts[c.group] = (counts[c.group] ?? 0) + 1;
     }
-    return [for (final e in counts.entries) (e.key, e.value)];
+    return [
+      for (final g in _store.prefs.orderGroups(counts.keys)) (g, counts[g]!),
+    ];
+  }
+
+  /// Salva una modifica alle preferenze dei canali e mostra [done].
+  Future<bool> _save(
+    ChannelPrefs Function(ChannelPrefs) change,
+    String done,
+  ) async {
+    if (_busy) return false;
+    setState(() => _busy = true);
+    try {
+      await _store.updatePrefs(change(_store.prefs));
+      _toast(done);
+      return true;
+    } catch (e) {
+      _toast('Modifica non salvata: ${redactError(e)}');
+      return false;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _renameGroup() async {
+    final from = _category;
+    final name = await askText(
+      context,
+      title: 'Rinomina categoria',
+      hint: 'Nome della categoria',
+      initial: from,
+      message: 'Se scegli il nome di un\'altra categoria, le due si uniscono.',
+    );
+    if (name == null || name.isEmpty || name == from || !mounted) return;
+    final ok = await _save(
+      (p) => p.renameGroup(from, name),
+      'Categoria rinominata in "$name".',
+    );
+    if (ok && mounted) setState(() => _category = name);
+  }
+
+  Future<void> _setGroupHidden(String group, bool hide) => _save(
+    (p) => p.setGroupHidden(group, hide),
+    hide
+        ? 'Categoria "$group" nascosta, anche per i canali che arriveranno.'
+        : 'Categoria "$group" di nuovo visibile.',
+  );
+
+  /// Protegge col PIN (o libera) la categoria scelta. Togliere un blocco
+  /// chiede il PIN.
+  Future<void> _toggleGroupLock(String group) async {
+    final parental = AppScope.of(context).parental;
+    final locked = parental.lockedGroups.contains(group);
+    if (locked &&
+        !await parental.unlock(
+          context,
+          reason: 'Serve il PIN per sbloccare.',
+        )) {
+      return;
+    }
+    await parental.setGroupLocked(group, !locked);
+    if (mounted) setState(() {});
+    _toast(
+      locked
+          ? 'Categoria "$group" non più protetta.'
+          : 'Categoria "$group" protetta dal PIN.',
+    );
+  }
+
+  Future<void> _moveGroup(List<String> order, int delta) => _save(
+    (p) => p.moveGroup(order, _category, delta),
+    delta < 0 ? 'Categoria spostata più su.' : 'Categoria spostata più giù.',
+  );
+
+  Future<void> _moveSelected(List<String> groups) async {
+    final keys = _selected.toList();
+    if (keys.isEmpty) return;
+    final to = await pickGroup(context, groups: groups, canReset: true);
+    if (to == null || !mounted) return;
+    final ok = await _save(
+      (p) {
+        var next = p;
+        for (final k in keys) {
+          next = next.moveToGroup(k, to);
+        }
+        return next;
+      },
+      to.isEmpty
+          ? 'Canali tornati nella categoria della lista.'
+          : (keys.length == 1
+                ? '1 canale spostato in "$to".'
+                : '${keys.length} canali spostati in "$to".'),
+    );
+    if (ok && mounted) _stopSelecting();
   }
 
   String _label(String category) => switch (category) {
@@ -232,7 +328,9 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                 hint: 'Cerca un canale',
                 prefixIcon: const Icon(Icons.search_rounded),
               );
-              final channels = _channelPane(inCategory, shown);
+              final channels = _channelPane(inCategory, shown, [
+                for (final (g, _) in groups) g,
+              ]);
               final pad = _pagePadding(context).copyWith(bottom: 16);
               if (!wide) {
                 return Padding(
@@ -327,7 +425,8 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
       child: Row(
         mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
         children: [
-          if (id == _hiddenChannels) ...[
+          if (id == _hiddenChannels ||
+              _store.prefs.hiddenGroups.contains(id)) ...[
             Icon(
               Icons.visibility_off_outlined,
               size: 18,
@@ -358,9 +457,19 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
 
   /// Destra: barra con le azioni della categoria o della selezione, poi i
   /// canali.
-  Widget _channelPane(List<Channel> inCategory, List<Channel> shown) {
+  Widget _channelPane(
+    List<Channel> inCategory,
+    List<Channel> shown,
+    List<String> groupOrder,
+  ) {
     final t = Theme.of(context).textTheme;
-    final hiddenHere = inCategory.where((c) => c.hidden).length;
+    // Nascosti uno per uno (quelli della categoria nascosta si mostrano
+    // mostrando la categoria).
+    final hiddenHere = inCategory
+        .where((c) => c.hidden && !c.groupHidden)
+        .length;
+    final groupHidden = _store.prefs.hiddenGroups.contains(_category);
+    final groupIndex = groupOrder.indexOf(_category);
     final allSelected =
         shown.isNotEmpty && shown.every((c) => _selected.contains(c.key));
     final selectedChannels = [
@@ -368,7 +477,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
         if (_selected.contains(c.key)) c,
     ];
     final canHide = selectedChannels.any((c) => !c.hidden);
-    final canShow = selectedChannels.any((c) => c.hidden);
+    final canShow = selectedChannels.any((c) => c.hidden && !c.groupHidden);
     final realGroup = _category != _allChannels && _category != _hiddenChannels;
 
     final Widget bar;
@@ -414,12 +523,21 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
           OutlinedButton.icon(
             onPressed: !_busy && canShow
                 ? () => _setHidden(
-                    selectedChannels.where((c) => c.hidden).map((c) => c.key),
+                    selectedChannels
+                        .where((c) => c.hidden && !c.groupHidden)
+                        .map((c) => c.key),
                     false,
                   )
                 : null,
             icon: const Icon(Icons.visibility_outlined),
             label: const Text('Mostra'),
+          ),
+          OutlinedButton.icon(
+            onPressed: !_busy && _selected.isNotEmpty
+                ? () => _moveSelected(groupOrder)
+                : null,
+            icon: const Icon(Icons.drive_file_move_outline),
+            label: const Text('Sposta in…'),
           ),
           TextButton(onPressed: _stopSelecting, child: const Text('Annulla')),
         ],
@@ -443,6 +561,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                   inCategory.length == 1
                       ? '1 canale'
                       : '${inCategory.length} canali',
+                  if (groupHidden) 'categoria nascosta',
                   if (hiddenHere > 0 && _category != _hiddenChannels)
                     '$hiddenHere nascosti',
                 ].join(' · '),
@@ -456,16 +575,53 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
             icon: const Icon(Icons.checklist_rounded),
             label: const Text('Seleziona'),
           ),
-          if (realGroup && hiddenHere < inCategory.length)
+          if (realGroup)
             OutlinedButton.icon(
               onPressed: _busy
                   ? null
-                  : () => _setHidden(
-                      inCategory.where((c) => !c.hidden).map((c) => c.key),
-                      true,
-                    ),
-              icon: const Icon(Icons.visibility_off_outlined),
-              label: const Text('Nascondi la categoria'),
+                  : () => _setGroupHidden(_category, !groupHidden),
+              icon: Icon(
+                groupHidden
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+              ),
+              label: Text(
+                groupHidden ? 'Mostra la categoria' : 'Nascondi la categoria',
+              ),
+            ),
+          if (realGroup && AppScope.of(context).parental.enabled)
+            OutlinedButton.icon(
+              onPressed: () => _toggleGroupLock(_category),
+              icon: Icon(
+                AppScope.of(context).parental.lockedGroups.contains(_category)
+                    ? Icons.lock_open_rounded
+                    : Icons.lock_outline_rounded,
+              ),
+              label: Text(
+                AppScope.of(context).parental.lockedGroups.contains(_category)
+                    ? 'Togli il PIN'
+                    : 'Proteggi col PIN',
+              ),
+            ),
+          if (realGroup)
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _renameGroup,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Rinomina'),
+            ),
+          if (realGroup && groupIndex > 0)
+            IconButton.outlined(
+              tooltip: 'Sposta la categoria più su',
+              onPressed: _busy ? null : () => _moveGroup(groupOrder, -1),
+              icon: const Icon(Icons.arrow_upward_rounded),
+            ),
+          if (realGroup &&
+              groupIndex >= 0 &&
+              groupIndex < groupOrder.length - 1)
+            IconButton.outlined(
+              tooltip: 'Sposta la categoria più giù',
+              onPressed: _busy ? null : () => _moveGroup(groupOrder, 1),
+              icon: const Icon(Icons.arrow_downward_rounded),
             ),
           if ((realGroup || _category == _hiddenChannels) && hiddenHere > 0)
             OutlinedButton.icon(
@@ -574,6 +730,18 @@ class _ChannelRow extends StatelessWidget {
             ),
             const SizedBox(width: 12),
           ],
+          SizedBox(
+            width: 40,
+            child: Text(
+              '${c.number}',
+              style: t.labelLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: c.renumbered
+                    ? VistaColors.accent
+                    : VistaColors.textTertiary,
+              ),
+            ),
+          ),
           Opacity(
             opacity: c.hidden ? 0.45 : 1,
             child: ChannelLogo(channel: c, size: 48),
@@ -601,15 +769,27 @@ class _ChannelRow extends StatelessWidget {
               ],
             ),
           ),
+          if (AppScope.of(context).parental.isLocked(c))
+            const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: Icon(
+                Icons.lock_outline_rounded,
+                size: 18,
+                color: VistaColors.accent,
+              ),
+            ),
           if (c.customLogo.isNotEmpty)
             const Padding(
               padding: EdgeInsets.only(left: 8),
               child: Pill('icona'),
             ),
           if (c.hidden)
-            const Padding(
-              padding: EdgeInsets.only(left: 8),
-              child: Pill('nascosto', filled: true),
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Pill(
+                c.groupHidden ? 'categoria nascosta' : 'nascosto',
+                filled: true,
+              ),
             ),
         ],
       ),
@@ -764,6 +944,9 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
                   children: [
                     _header(c),
                     _section('Visibilità', _visibilitySection(c)),
+                    if (AppScope.of(context).parental.enabled)
+                      _section('PIN', _lockSection(c)),
+                    _section('Numero e categoria', _placeSection(c)),
                     _section('Nome', _nameSection(c)),
                     _section('Icona', _logoSection(c)),
                     _section('Raggruppa', _mergeSection(c)),
@@ -835,27 +1018,153 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
     );
   }
 
-  List<Widget> _visibilitySection(Channel c) => [
+  List<Widget> _visibilitySection(Channel c) => c.groupHidden
+      ? [
+          Text(
+            'Nascosto perché è nascosta la categoria "${c.group}".',
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: VistaColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              autofocus: true,
+              onPressed: _busy
+                  ? null
+                  : () => _save(
+                      (p) => p.setGroupHidden(c.group, false),
+                      'Categoria "${c.group}" di nuovo visibile.',
+                    ),
+              child: const Text('Mostra la categoria'),
+            ),
+          ),
+        ]
+      : [
+          Text(
+            c.hidden
+                ? 'Nascosto: non compare in Live né nella guida.'
+                : 'Visibile in Live e nella guida.',
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: VistaColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              autofocus: true,
+              onPressed: _busy
+                  ? null
+                  : () => _save(
+                      (p) => p.setHidden(widget.channelKey, !c.hidden),
+                      c.hidden
+                          ? 'Canale di nuovo visibile.'
+                          : 'Canale nascosto.',
+                    ),
+              child: Text(c.hidden ? 'Mostra il canale' : 'Nascondi il canale'),
+            ),
+          ),
+        ];
+
+  Future<void> _toggleLock(Channel c) async {
+    final parental = AppScope.of(context).parental;
+    final locked = parental.lockedChannels.contains(c.key);
+    if (locked &&
+        !await parental.unlock(
+          context,
+          reason: 'Serve il PIN per sbloccare.',
+        )) {
+      return;
+    }
+    await parental.setChannelLocked(c.key, !locked);
+    if (mounted) setState(() {});
+    _toast(locked ? 'Canale non più protetto.' : 'Canale protetto dal PIN.');
+  }
+
+  Future<void> _changeNumber(Channel c) async {
+    final n = await askChannelNumber(
+      context,
+      channelName: c.name,
+      current: c.number,
+      custom: c.renumbered,
+    );
+    if (n == null || !mounted) return;
+    await _save(
+      (p) => p.setNumber(widget.channelKey, n == 0 ? null : n),
+      n == 0 ? 'Torna il numero della lista.' : 'Ora è il canale $n.',
+    );
+  }
+
+  Future<void> _changeGroup(Channel c) async {
+    final groups = <String>{for (final ch in _channelsOf(_store)) ch.group};
+    final moved =
+        (_store.prefs.overrides[widget.channelKey]?.group ?? '').isNotEmpty;
+    final to = await pickGroup(
+      context,
+      groups: _store.prefs.orderGroups(groups),
+      current: c.group,
+      canReset: moved,
+    );
+    if (to == null || to == c.group || !mounted) return;
+    await _save(
+      (p) => p.moveToGroup(widget.channelKey, to),
+      to.isEmpty
+          ? 'Tornato nella categoria della lista.'
+          : 'Spostato in "$to".',
+    );
+  }
+
+  List<Widget> _lockSection(Channel c) {
+    final parental = AppScope.of(context).parental;
+    final own = parental.lockedChannels.contains(c.key);
+    final byGroup = parental.lockedGroups.contains(c.group);
+    return [
+      Text(
+        byGroup
+            ? 'Protetto perché è protetta la categoria "${c.group}".'
+            : (own ? 'Per guardarlo serve il PIN.' : 'Chiunque può guardarlo.'),
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: VistaColors.textSecondary),
+      ),
+      if (!byGroup) ...[
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () => _toggleLock(c),
+            icon: Icon(
+              own ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+            ),
+            label: Text(own ? 'Togli il PIN' : 'Proteggi col PIN'),
+          ),
+        ),
+      ],
+    ];
+  }
+
+  List<Widget> _placeSection(Channel c) => [
     Text(
-      c.hidden
-          ? 'Nascosto: non compare in Live né nella guida.'
-          : 'Visibile in Live e nella guida.',
+      'Canale ${c.number}${c.renumbered ? ' (numero scelto da te)' : ''} · '
+      'categoria "${c.group.isEmpty ? 'Senza categoria' : c.group}"',
       style: Theme.of(context).textTheme.bodySmall
           ?.copyWith(color: VistaColors.textSecondary),
     ),
     const SizedBox(height: 12),
-    Align(
-      alignment: Alignment.centerLeft,
-      child: FilledButton(
-        autofocus: true,
-        onPressed: _busy
-            ? null
-            : () => _save(
-                (p) => p.setHidden(widget.channelKey, !c.hidden),
-                c.hidden ? 'Canale di nuovo visibile.' : 'Canale nascosto.',
-              ),
-        child: Text(c.hidden ? 'Mostra il canale' : 'Nascondi il canale'),
-      ),
+    Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _busy ? null : () => _changeNumber(c),
+          icon: const Icon(Icons.pin_outlined),
+          label: const Text('Cambia numero'),
+        ),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : () => _changeGroup(c),
+          icon: const Icon(Icons.drive_file_move_outline),
+          label: const Text('Sposta in categoria'),
+        ),
+      ],
     ),
   ];
 

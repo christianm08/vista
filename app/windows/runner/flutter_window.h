@@ -28,6 +28,10 @@ class FlutterWindow : public Win32Window {
   // finestra torna com'era (posizione, dimensioni, massimizzata o no).
   void SetFullScreen(bool on);
 
+  // Finestra piccola, sempre in primo piano, nell'angolo in basso a destra
+  // (l'equivalente del Picture-in-Picture); all'uscita torna com'era.
+  void SetMini(bool on);
+
   // The project to run.
   flutter::DartProject project_;
 
@@ -39,6 +43,8 @@ class FlutterWindow : public Win32Window {
       window_channel_;
 
   bool full_screen_ = false;
+  bool mini_ = false;
+  WINDOWPLACEMENT mini_saved_{sizeof(WINDOWPLACEMENT)};
   LONG saved_style_ = 0;
   WINDOWPLACEMENT saved_placement_{sizeof(WINDOWPLACEMENT)};
 };

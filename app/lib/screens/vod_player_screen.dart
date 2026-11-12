@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import '../data/source_store.dart';
 import '../data/user_store.dart';
 import '../data/window_mode.dart';
 import '../player/options_panel.dart';
+import '../player/platform_player.dart';
 import '../player/video.dart';
 import '../theme.dart';
 
@@ -109,6 +111,11 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
   void initState() {
     super.initState();
     _user = AppScope.of(context).user;
+    PlayerPlatform.setAutoPip(true);
+    PlayerPlatform.pip.addListener(_onPip);
+    PlayerPlatform.canPip().then((v) {
+      if (mounted) setState(() => _canPip = v);
+    });
     _subs
       ..add(
         _player.stream.position.listen((p) {
@@ -176,12 +183,40 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
     // toccare un albero bloccato.
     Future.microtask(() => _saveProgress(force: true));
     _overlayTimer?.cancel();
+    PlayerPlatform.pip.removeListener(_onPip);
+    PlayerPlatform.setAutoPip(false);
+    PlayerPlatform.exitPip();
     for (final s in _subs) {
       s.cancel();
     }
     _player.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  bool _canPip = false;
+
+  /// Entrando nel PiP o nella finestra mini il focus torna al player.
+  void _onPip() {
+    if (!mounted) return;
+    setState(() => _options = false);
+    _focus.requestFocus();
+  }
+
+  Future<void> _openExternal() async {
+    _player.pause();
+    final ok = await PlayerPlatform.openExternal(_item.url, _item.title);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Platform.isWindows
+                ? 'Installa VLC per aprire i titoli con un altro player.'
+                : 'Nessun altro player installato.',
+          ),
+        ),
+      );
+    }
   }
 
   void _openAt(int i) {
@@ -194,7 +229,7 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
       _buffering = true;
     });
     _showOverlay();
-    _player.open(Media(_item.url, start: _item.startAt));
+    _player.open(streamMedia(context, _item.url, start: _item.startAt));
   }
 
   /// Menu del player: qualità video, audio, sottotitoli.
@@ -202,6 +237,8 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
 
   void _openTracks() {
     _overlayTimer?.cancel();
+    // Come nel player dei canali: prima il focus al player, poi il menu.
+    _focus.requestFocus();
     setState(() {
       _options = true;
       _overlay = false;
@@ -259,6 +296,10 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
     }
     if (_options) return KeyEventResult.ignored;
     final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.escape && PlayerPlatform.pip.value) {
+      if (e is KeyDownEvent) PlayerPlatform.exitPip();
+      return KeyEventResult.handled;
+    }
     if (k == LogicalKeyboardKey.escape) {
       // A schermo intero Esc prima ne esce, poi torna indietro.
       if (e is KeyDownEvent && !WindowMode.leaveOnEscape()) {
@@ -338,53 +379,84 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
                 final w = MediaQuery.sizeOf(context).width;
                 _seekBy(d.localPosition.dx < w / 2 ? -10 : 10);
               },
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  formattedVideo(_video, _user?.picture ?? PictureFormat.fit),
-                  if (_buffering && _error == null)
-                    const Center(child: CircularProgressIndicator()),
-                  if (_error != null) _message(_error!),
-                  AnimatedOpacity(
-                    opacity: _overlay ? 1 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: IgnorePointer(
-                      ignoring: !_overlay,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          _controls(),
-                          if (!Device.isTv)
+              child: ValueListenableBuilder<bool>(
+                valueListenable: PlayerPlatform.pip,
+                builder: (context, pip, stack) => pip
+                    ? PipView(
+                        video: formattedVideo(
+                          _video,
+                          _user?.picture ?? PictureFormat.fit,
+                        ),
+                      )
+                    : stack!,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    formattedVideo(_video, _user?.picture ?? PictureFormat.fit),
+                    if (_buffering && _error == null)
+                      const Center(child: CircularProgressIndicator()),
+                    if (_error != null) _message(_error!),
+                    AnimatedOpacity(
+                      opacity: _overlay ? 1 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: IgnorePointer(
+                        ignoring: !_overlay,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _controls(),
+                            if (!Device.isTv)
+                              const Align(
+                                alignment: Alignment.topLeft,
+                                child: PlayerBackButton(),
+                              ),
                             const Align(
-                              alignment: Alignment.topLeft,
-                              child: PlayerBackButton(),
+                              alignment: Alignment.topRight,
+                              child: FullScreenButton(),
                             ),
-                          const Align(
-                            alignment: Alignment.topRight,
-                            child: FullScreenButton(),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  PlayerOptionsPanel(
-                    open: _options,
-                    title: _item.title,
-                    sections: _options
-                        ? [
-                            ...trackSections(
-                              _player,
-                              _tracks,
-                              _track,
-                              onPicked: _closeOptions,
-                            ),
-                            if (_user case final u?)
-                              pictureSection(u, onPicked: _closeOptions),
-                          ]
-                        : const [],
-                    onClose: _closeOptions,
-                  ),
-                ],
+                    PlayerOptionsPanel(
+                      open: _options,
+                      title: _item.title,
+                      sections: _options
+                          ? [
+                              ...trackSections(
+                                _player,
+                                _tracks,
+                                _track,
+                                onPicked: _closeOptions,
+                              ),
+                              if (_user case final u?)
+                                pictureSection(u, onPicked: _closeOptions),
+                              PlayerOptionSection('Altro', [
+                                if (_canPip)
+                                  PlayerOption(
+                                    icon: Icons.picture_in_picture_alt_rounded,
+                                    label: PlayerPlatform.pipLabel,
+                                    onTap: () {
+                                      _closeOptions();
+                                      PlayerPlatform.enterPip();
+                                    },
+                                  ),
+                                if (PlayerPlatform.hasExternalPlayer)
+                                  PlayerOption(
+                                    icon: Icons.open_in_new_rounded,
+                                    label: 'Apri con un altro player',
+                                    onTap: () {
+                                      _closeOptions();
+                                      _openExternal();
+                                    },
+                                  ),
+                              ]),
+                            ]
+                          : const [],
+                      onClose: _closeOptions,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -98,7 +98,7 @@ ResolveResult resolveChannels(
         sourceName: p.entry.name,
       ));
     }
-    _stableSortByQuality(streams);
+    sortStreamsByQuality(streams);
 
     final name = displayName(key);
     channels.add(Channel(
@@ -129,8 +129,9 @@ ResolveResult resolveChannels(
   );
 }
 
-/// `List.sort` di Dart non è stabile: si usa l'indice originale come spareggio.
-void _stableSortByQuality(List<ChannelStream> streams) {
+/// Ordina i flussi dal migliore al peggiore, mantenendo l'ordine a parità di
+/// qualità (`List.sort` di Dart non è stabile: l'indice fa da spareggio).
+void sortStreamsByQuality(List<ChannelStream> streams) {
   final indexed = [for (var i = 0; i < streams.length; i++) (i, streams[i])];
   indexed.sort((a, b) {
     final c = b.$2.quality.rank.compareTo(a.$2.quality.rank);

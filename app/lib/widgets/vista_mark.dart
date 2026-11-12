@@ -43,8 +43,9 @@ void paintVistaMark(
     final area = Rect.fromLTWH(o.dx, o.dy, s, s);
     final clip = switch (shape) {
       MarkShape.square => Path()..addRect(area),
-      MarkShape.rounded => Path()
-        ..addRRect(RRect.fromRectAndRadius(area, Radius.circular(s * 0.225))),
+      MarkShape.rounded =>
+        Path()
+          ..addRRect(RRect.fromRectAndRadius(area, Radius.circular(s * 0.225))),
       MarkShape.circle => Path()..addOval(area),
       MarkShape.none => Path(),
     };

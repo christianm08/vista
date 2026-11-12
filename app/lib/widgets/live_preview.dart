@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
+import '../app_scope.dart';
 import '../player/video.dart';
 import '../theme.dart';
 import 'channel_logo.dart';
@@ -110,7 +111,7 @@ class _LivePreviewState extends State<LivePreview> {
     });
     _watchdog?.cancel();
     _watchdog = Timer(_stall, _next);
-    _player!.open(Media(c.streams[stream].url));
+    _player!.open(streamMedia(context, c.streams[stream].url));
   }
 
   void _next() {

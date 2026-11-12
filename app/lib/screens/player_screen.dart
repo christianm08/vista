@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,10 +8,13 @@ import 'package:media_kit/media_kit.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 import '../app_scope.dart';
+import '../data/recordings.dart';
+import '../data/stream_recorder.dart';
 import '../data/source_store.dart' show redactError;
 import '../data/user_store.dart';
 import '../data/window_mode.dart';
 import '../player/options_panel.dart';
+import '../player/platform_player.dart';
 import '../player/stream_picker.dart';
 import '../player/video.dart';
 import 'multiview_screen.dart';
@@ -152,6 +156,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     _user = AppScope.of(context).user;
     _user.addListener(_onUserChanged);
+    PlayerPlatform.setAutoPip(true);
+    PlayerPlatform.pip.addListener(_onPip);
+    PlayerPlatform.canPip().then((v) {
+      if (mounted) setState(() => _canPip = v);
+    });
     _subs
       ..add(
         _player.stream.tracks.listen((t) {
@@ -210,6 +219,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _user.removeListener(_onUserChanged);
+    // Uscendo dal player la registrazione istantanea si chiude.
+    _recording?.stop();
+    PlayerPlatform.pip.removeListener(_onPip);
+    PlayerPlatform.setAutoPip(false);
+    PlayerPlatform.exitPip();
     _watchdog?.cancel();
     _retryTimer?.cancel();
     _typingTimer?.cancel();
@@ -226,7 +240,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _tuneChannel(int i) {
+    // Canale protetto dal PIN: prima lo si sblocca (poi si riprova).
+    final parental = AppScope.of(context).parental;
+    if (_tuned != null &&
+        parental.isLocked(_channels[i]) &&
+        !parental.isUnlocked) {
+      parental
+          .unlock(context, reason: '${_channels[i].name} è protetto dal PIN.')
+          .then((ok) {
+            if (ok && mounted) _tuneChannel(i);
+          });
+      return;
+    }
     final old = _tuned;
+    // Cambiando canale la registrazione istantanea si chiude.
+    if (_recording != null && old != null && old.key != _channels[i].key) {
+      _stopRecording();
+    }
     _channelIndex = i;
     final key = _channel.key;
     if (old != null && old.key != key) _previous = old;
@@ -308,6 +338,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  /// Decodifica predefinita del player (per tornarci dopo quella software).
+  String? _hwdec;
+  bool _canPip = false;
+
   void _open() {
     _retryTimer?.cancel();
     setState(() {
@@ -316,7 +350,102 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _playing = false;
     });
     _armWatchdog();
-    _player.open(Media(_picker.current.url));
+    final url = _picker.current.url;
+    PlayerPlatform.applyDecoder(
+      _player,
+      software: _user.softwareDecode(_channel.key),
+      defaultHwdec: _hwdec,
+    ).then((h) {
+      _hwdec = h;
+      // Nel frattempo si può essere passati a un altro flusso.
+      if (mounted && _picker.current.url == url) {
+        _player.open(streamMedia(context, url));
+      }
+    });
+  }
+
+  /// Registrazione istantanea in corso.
+  StreamRecorder? _recording;
+  DateTime? _recordingSince;
+
+  Future<void> _toggleRecording() async {
+    if (_recording != null) {
+      await _stopRecording();
+      return;
+    }
+    final now = _now;
+    final title = widget.guide?.nowOn(_channel, now: now)?.title ?? '';
+    final store = AppScope.of(context).store;
+    final service = RecordingService.instance;
+    final f = await service.startInstant(
+      streams: _channel.streams,
+      channelName: _channel.name,
+      title: title,
+      headersFor: (url) {
+        final ua = store.userAgentFor(url);
+        return ua == null ? null : {'User-Agent': ua};
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _recording = f;
+      _recordingSince = DateTime.now();
+    });
+    _notify(
+      f == null
+          ? (service.takeWarning() ?? 'Registrazione non disponibile.')
+          : 'Registrazione avviata (${service.quality.label}, '
+                '${service.quality.estimate(const Duration(hours: 1))} '
+                'all\'ora): la trovi in Impostazioni › Registrazioni.',
+    );
+    // Se si ferma da sola (spazio finito, flusso caduto) il bollino sparisce.
+    f?.done.then((_) {
+      if (mounted && identical(_recording, f)) {
+        setState(() {
+          _recording = null;
+          _recordingSince = null;
+        });
+        _notify('Registrazione fermata e salvata.');
+      }
+    });
+  }
+
+  Future<void> _stopRecording({bool quiet = false}) async {
+    final rec = _recording;
+    if (rec == null) return;
+    // Prima si azzera, così l'avviso di "fermata da sola" non scatta.
+    setState(() {
+      _recording = null;
+      _recordingSince = null;
+    });
+    await rec.stop();
+    if (mounted && !quiet) _notify('Registrazione salvata.');
+  }
+
+  /// Entrando nel PiP o nella finestra mini i pannelli spariscono: il focus
+  /// torna al player, così Esc e i tasti continuano a funzionare.
+  void _onPip() {
+    if (!mounted) return;
+    setState(() {
+      _options = false;
+      _list = false;
+      _banner = false;
+    });
+    _rootFocus.requestFocus();
+  }
+
+  Future<void> _openExternal() async {
+    final ok = await PlayerPlatform.openExternal(
+      _picker.current.url,
+      _channel.name,
+    );
+    if (!ok && mounted) {
+      _notify(
+        Platform.isWindows
+            ? 'Installa VLC per aprire i canali con un altro player.'
+            : 'Nessun altro player installato.',
+      );
+    }
   }
 
   void _armWatchdog() {
@@ -430,6 +559,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _openOptions() {
     _bannerTimer?.cancel();
+    // Il focus passa prima al player: se restasse sul pulsante della barra
+    // (fuori dal menu), l'autofocus del menu non lo prenderebbe e col
+    // telecomando le frecce si muoverebbero dietro al menu.
+    _rootFocus.requestFocus();
     setState(() {
       _options = true;
       _banner = false;
@@ -452,6 +585,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
     _watchdog?.cancel();
     _retryTimer?.cancel();
+    // Il Multiview usa altri player: la registrazione di questo si chiude.
+    await _stopRecording();
     await _player.stop();
     if (!mounted) return;
     final picked = await Navigator.of(context).push<Channel>(
@@ -501,6 +636,56 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ...trackSections(_player, _tracks, _track, onPicked: done),
       pictureSection(_user, onPicked: done),
       PlayerOptionSection('Altro', [
+        PlayerOption(
+          icon: _recording == null
+              ? Icons.fiber_manual_record_outlined
+              : Icons.stop_circle_outlined,
+          label: _recording == null ? 'Registra' : 'Ferma la registrazione',
+          detail: _recording == null
+              ? 'Salva il canale finché non la fermi o cambi canale'
+              : 'In corso dalle ${hhmm(_recordingSince!)}',
+          onTap: () {
+            done();
+            _toggleRecording();
+          },
+        ),
+        if (_canPip)
+          PlayerOption(
+            icon: Icons.picture_in_picture_alt_rounded,
+            label: PlayerPlatform.pipLabel,
+            detail: 'Il canale resta visibile mentre fai altro',
+            onTap: () {
+              done();
+              PlayerPlatform.enterPip();
+            },
+          ),
+        if (PlayerPlatform.hasExternalPlayer)
+          PlayerOption(
+            icon: Icons.open_in_new_rounded,
+            label: 'Apri con un altro player',
+            detail: Platform.isWindows ? 'VLC' : 'VLC, MX Player…',
+            onTap: () {
+              done();
+              _openExternal();
+            },
+          ),
+        PlayerOption(
+          icon: Icons.memory_rounded,
+          label: _user.softwareDecode(_channel.key)
+              ? 'Decodifica software (attiva)'
+              : 'Decodifica software',
+          detail: _user.softwareDecode(_channel.key)
+              ? 'Torna alla decodifica hardware per questo canale'
+              : 'Per questo canale, se il video scatta o si vede male',
+          onTap: () {
+            _user.setSoftwareDecode(
+              _channel.key,
+              !_user.softwareDecode(_channel.key),
+            );
+            done();
+            _openFresh();
+          },
+        ),
         if (_previous case final p?)
           PlayerOption(
             icon: Icons.undo_rounded,
@@ -566,6 +751,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Tasto Menu: il menu del player (flusso, audio, sottotitoli, Multiview).
     if (k == LogicalKeyboardKey.contextMenu) {
       if (e is KeyDownEvent) _openOptions();
+      return KeyEventResult.handled;
+    }
+    // Windows: dalla finestra mini, Esc torna alla finestra normale.
+    if (k == LogicalKeyboardKey.escape && PlayerPlatform.pip.value) {
+      if (e is KeyDownEvent) PlayerPlatform.exitPip();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.escape) {
@@ -666,44 +856,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
               final v = d.primaryVelocity ?? 0;
               if (v.abs() > 300) _zap(v < 0 ? 1 : -1);
             },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                formattedVideo(_video, _user.picture),
-                if (!_playing && _message == null)
-                  const Center(child: CircularProgressIndicator()),
-                if (_message != null) _buildMessage(),
-                if (_typed.isNotEmpty) _buildTyped(),
-                AnimatedOpacity(
-                  opacity: _banner ? 1 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: IgnorePointer(
-                    ignoring: !_banner,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _buildBanner(),
-                        if (!Device.isTv)
-                          const Align(
-                            alignment: Alignment.topLeft,
-                            child: PlayerBackButton(),
-                          ),
-                        const Align(
-                          alignment: Alignment.topRight,
-                          child: FullScreenButton(),
+            child: ValueListenableBuilder<bool>(
+              valueListenable: PlayerPlatform.pip,
+              // Nel riquadro PiP o nella finestra mini: solo il video (un
+              // doppio clic sulla finestra mini torna alla finestra normale).
+              builder: (context, pip, stack) => pip
+                  ? PipView(video: formattedVideo(_video, _user.picture))
+                  : stack!,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  formattedVideo(_video, _user.picture),
+                  if (!_playing && _message == null)
+                    const Center(child: CircularProgressIndicator()),
+                  if (_message != null) _buildMessage(),
+                  if (_typed.isNotEmpty) _buildTyped(),
+                  if (_recording != null)
+                    const Align(
+                      alignment: Alignment.topCenter,
+                      child: SafeArea(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: _RecBadge(),
                         ),
-                      ],
+                      ),
+                    ),
+                  AnimatedOpacity(
+                    opacity: _banner ? 1 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: IgnorePointer(
+                      ignoring: !_banner,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _buildBanner(),
+                          if (!Device.isTv)
+                            const Align(
+                              alignment: Alignment.topLeft,
+                              child: PlayerBackButton(),
+                            ),
+                          const Align(
+                            alignment: Alignment.topRight,
+                            child: FullScreenButton(),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                _buildList(),
-                PlayerOptionsPanel(
-                  open: _options,
-                  title: _channel.name,
-                  sections: _options ? _optionSections() : const [],
-                  onClose: _closeOptions,
-                ),
-              ],
+                  _buildList(),
+                  PlayerOptionsPanel(
+                    open: _options,
+                    title: _channel.name,
+                    sections: _options ? _optionSections() : const [],
+                    onClose: _closeOptions,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1133,4 +1341,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
+}
+
+/// "● REC" sopra il video durante la registrazione.
+class _RecBadge extends StatelessWidget {
+  const _RecBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: const Color(0xCC000000),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.circle, size: 12, color: Color(0xFFFF5A5F)),
+        SizedBox(width: 8),
+        Text('REC', style: TextStyle(fontWeight: FontWeight.w800)),
+      ],
+    ),
+  );
 }

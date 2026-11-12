@@ -93,10 +93,10 @@ class _TitleScreenState extends State<TitleScreen> {
     });
     try {
       if (_isMovie) {
-        final d = await app.store.movieDetails(source, widget.movie!);
+        final d = await app.store.movieDetails(widget.movie!);
         if (mounted) setState(() => _details = d);
       } else {
-        final info = await app.store.seriesInfo(source, widget.series!);
+        final info = await app.store.seriesInfo(widget.series!);
         if (!mounted) return;
         setState(() {
           _details = info.details;

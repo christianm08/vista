@@ -3,12 +3,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
+import '../data/backup.dart';
 import '../data/epg_store.dart';
+import '../data/parental_store.dart';
 import '../data/source_store.dart';
+import '../data/user_store.dart';
 import '../theme.dart';
+import '../widgets/channel_dialogs.dart';
 import '../widgets/focus_card.dart';
 import '../widgets/tv_text_field.dart';
 import 'channel_settings_screen.dart';
+import 'import_screen.dart';
+import 'recordings_screen.dart';
 import 'services_screen.dart';
 import 'shell.dart';
 
@@ -23,18 +29,82 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _refreshing = false;
   bool _epgRefreshing = false;
+  bool _cleaning = false;
 
-  Future<void> _refresh() async {
+  /// Spazio delle cache, ricalcolato dopo una pulizia.
+  late Future<int> _cacheSize = CacheCleaner.size();
+
+  Future<void> _saveBackup() async {
+    try {
+      final where = await Backup.save(AppScope.of(context));
+      if (where != null && mounted) {
+        showToast(context, 'Backup salvato: $where');
+      }
+    } catch (e) {
+      if (mounted) showToast(context, 'Backup non salvato: ${redactError(e)}');
+    }
+  }
+
+  Future<void> _restoreBackup() async {
     final app = AppScope.of(context);
-    final lib = app.library;
-    if (lib == null) return;
+    Map<String, dynamic>? data;
+    try {
+      data = await Backup.pick();
+    } on FormatException catch (e) {
+      if (mounted) showToast(context, e.message);
+      return;
+    } catch (e) {
+      if (mounted) showToast(context, 'File non letto: ${redactError(e)}');
+      return;
+    }
+    if (data == null || !mounted) return;
+    final ok = await _confirm(
+      'Ripristinare il backup?',
+      'Preferiti, avanzamento, canali e preferenze verranno sostituiti con '
+          'quelli del backup. La fonte, la chiave TMDB e il PIN restano questi.',
+      'Ripristina',
+    );
+    if (!ok || !mounted) return;
+    await Backup.restore(app, data);
+    if (mounted) showToast(context, 'Backup ripristinato.');
+  }
+
+  Future<void> _clearCache() async {
+    final ok = await _confirm(
+      'Svuotare la cache?',
+      'Locandine, loghi e guide TV si riscaricheranno quando servono. '
+          'Preferiti, canali e impostazioni non si toccano.',
+      'Svuota',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _cleaning = true);
+    try {
+      await CacheCleaner.clear(AppScope.of(context));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _cleaning = false;
+          _cacheSize = CacheCleaner.size();
+        });
+        showToast(context, 'Cache svuotata.');
+      }
+    }
+  }
+
+  /// Aggiorna tutte le fonti; quelle che non rispondono non bloccano le
+  /// altre.
+  Future<void> _refreshAll() async {
+    final app = AppScope.of(context);
     setState(() => _refreshing = true);
     try {
-      await app.store.refresh(lib.source);
+      final errors = await app.store.refreshAll();
       unawaited(app.epg.refresh());
-      if (mounted) showToast(context, 'Contenuti aggiornati.');
-    } on SourceException catch (e) {
-      if (mounted) showToast(context, e.message);
+      if (mounted) {
+        showToast(
+          context,
+          errors.isEmpty ? 'Contenuti aggiornati.' : errors.join('\n'),
+        );
+      }
     } catch (e) {
       if (mounted) {
         showToast(context, 'Aggiornamento non riuscito: ${redactError(e)}');
@@ -44,6 +114,143 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _addSource() async {
+    final app = AppScope.of(context);
+    final added = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ImportScreen(store: app.store, adding: true),
+      ),
+    );
+    if (added == true && mounted) {
+      unawaited(app.epg.refresh());
+      showToast(context, 'Fonte aggiunta: i canali uguali ora sono uniti.');
+    }
+  }
+
+  /// Azioni su una fonte: aggiorna, rinomina, user-agent, togli.
+  Future<void> _sourceActions(VistaSource source) async {
+    final app = AppScope.of(context);
+    final last = app.store.sources.length <= 1;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: const Color(0xF0121720),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(VistaRadius.card),
+        ),
+        title: Text(source.displayName),
+        children: [
+          if (source.canRefresh)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, 'refresh'),
+              child: const Text('Aggiorna adesso'),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'rename'),
+            child: const Text('Rinomina'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'agent'),
+            child: Text(
+              source.userAgent.isEmpty
+                  ? 'Imposta uno user-agent'
+                  : 'Cambia user-agent',
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'remove'),
+            child: Text(last ? 'Togli (e torna all\'inizio)' : 'Togli'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+    switch (choice) {
+      case 'refresh':
+        setState(() => _refreshing = true);
+        try {
+          await app.store.refresh(source);
+          unawaited(app.epg.refresh());
+          if (mounted) showToast(context, '${source.displayName} aggiornata.');
+        } on SourceException catch (e) {
+          if (mounted) showToast(context, e.message);
+        } catch (e) {
+          if (mounted) {
+            showToast(context, 'Aggiornamento non riuscito: ${redactError(e)}');
+          }
+        } finally {
+          if (mounted) setState(() => _refreshing = false);
+        }
+      case 'rename':
+        final name = await askText(
+          context,
+          title: 'Nome della fonte',
+          hint: source.label,
+          initial: source.name,
+          message: 'Lascia vuoto per usare "${source.label}".',
+        );
+        if (name != null) await app.store.updateSource(source, name: name);
+      case 'agent':
+        final ua = await askText(
+          context,
+          title: 'User-agent',
+          hint: 'Es. VLC/3.0.20 LibVLC/3.0.20',
+          initial: source.userAgent,
+          message:
+              'Serve solo se il fornitore lo chiede. Vale per scaricare la '
+              'lista e per guardarne i canali. Vuoto = predefinito.',
+        );
+        if (ua != null) await app.store.updateSource(source, userAgent: ua);
+      case 'remove':
+        final ok = await _confirm(
+          'Togliere ${source.displayName}?',
+          last
+              ? 'È l\'unica fonte: Vista tornerà alla schermata iniziale. '
+                    'Preferiti e avanzamento restano.'
+              : 'I suoi canali, film e serie spariscono; quelli che sono anche '
+                    'in un\'altra fonte restano.',
+          'Togli',
+        );
+        if (ok && mounted) {
+          await app.store.remove(source);
+          if (mounted && !last) unawaited(app.epg.refresh());
+        }
+    }
+  }
+
+  Future<void> _pickAutoRefresh() async {
+    final user = AppScope.of(context).user;
+    final picked = await showDialog<AutoRefresh>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: const Color(0xF0121720),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(VistaRadius.card),
+        ),
+        title: const Text('Aggiornamento automatico'),
+        children: [
+          for (final a in AutoRefresh.values)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+              child: FocusCard(
+                autofocus: a == user.autoRefresh,
+                selected: a == user.autoRefresh,
+                radius: 12,
+                focusScale: 1.0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 11,
+                ),
+                onTap: () => Navigator.pop(ctx, a),
+                child: Text(a.label),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) user.setAutoRefresh(picked);
+  }
+
   Future<void> _refreshEpg() async {
     setState(() => _epgRefreshing = true);
     try {
@@ -51,16 +258,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _epgRefreshing = false);
     }
-  }
-
-  Future<void> _changeSource() async {
-    final ok = await _confirm(
-      'Cambiare fonte?',
-      'La lista o l\'account attuale verranno rimossi da questo dispositivo. '
-          'Preferiti e avanzamento restano.',
-      'Cambia',
-    );
-    if (ok && mounted) await AppScope.of(context).store.clear();
   }
 
   Future<void> _clearRecent() async {
@@ -202,6 +399,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await epg.setShift(Duration(hours: picked));
   }
 
+  /// Imposta, cambia o toglie il PIN (cambiare e togliere chiedono quello
+  /// attuale).
+  Future<void> _editPin() async {
+    final parental = AppScope.of(context).parental;
+    if (parental.enabled) {
+      if (!await parental.unlock(
+        context,
+        reason: 'Inserisci il PIN attuale.',
+      )) {
+        return;
+      }
+      if (!mounted) return;
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          backgroundColor: const Color(0xF0121720),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(VistaRadius.card),
+          ),
+          title: const Text('PIN'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, 'change'),
+              child: const Text('Cambia PIN'),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, 'remove'),
+              child: const Text('Togli il PIN e tutti i blocchi'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null || !mounted) return;
+      if (choice == 'remove') {
+        await parental.setPin('');
+        if (mounted) showToast(context, 'PIN tolto: niente è più protetto.');
+        return;
+      }
+    }
+    if (!mounted) return;
+    var first = '';
+    if (!await askPin(
+      context,
+      title: 'Nuovo PIN',
+      reason: 'Servirà per i canali e le categorie protetti.',
+      onEntered: (p) => first = p,
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    final same = await askPin(
+      context,
+      title: 'Conferma il PIN',
+      check: (p) => p == first,
+    );
+    if (!mounted) return;
+    if (!same) {
+      showToast(context, 'I due PIN non coincidono: riprova.');
+      return;
+    }
+    await parental.setPin(first);
+    if (mounted) {
+      showToast(
+        context,
+        'PIN impostato. Blocca canali e categorie da Gestisci canali.',
+      );
+    }
+  }
+
   Future<bool> _confirm(String title, String body, String action) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -230,14 +496,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Si ridisegna quando cambiano fonti e catalogo (aggiunte, aggiornamenti).
+    return ValueListenableBuilder<Library?>(
+      valueListenable: AppScope.of(context).store.library,
+      builder: (context, _, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     final app = AppScope.of(context);
     final layout = VistaLayout.of(context);
     final t = Theme.of(context).textTheme;
     final lib = app.library;
-    final source = lib?.source;
     final c = lib?.catalog;
-    final canRefresh =
-        source != null && !(source is M3uSource && source.isFile);
     final g = layout.gutter;
 
     return ListView(
@@ -259,37 +530,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _Header('Fonte'),
-                if (source != null)
+                const _Header('Fonti'),
+                for (final (i, src) in (lib?.sources ?? const []).indexed)
                   _Tile(
-                    icon: source is XtreamSource
+                    icon: src is XtreamSource
                         ? Icons.dns_rounded
                         : Icons.playlist_play_rounded,
-                    title: source is XtreamSource
-                        ? 'Account Xtream'
-                        : 'Lista M3U',
+                    title: src.displayName,
                     subtitle: [
-                      source.label,
-                      if (c != null)
-                        '${c.live.channels.length} canali · ${c.movies.length} film · ${c.series.length} serie',
-                    ].join('\n'),
-                    autofocus: true,
-                  ),
-                if (canRefresh)
-                  _Tile(
-                    icon: Icons.refresh_rounded,
-                    title: _refreshing
-                        ? 'Aggiornamento in corso…'
-                        : 'Aggiorna contenuti',
-                    subtitle:
-                        'Scarica di nuovo canali, film e serie dalla fonte.',
-                    onTap: _refreshing ? null : _refresh,
+                      src is XtreamSource ? 'Account Xtream' : 'Lista M3U',
+                      if (src.name.isNotEmpty) src.label,
+                      if (src.userAgent.isNotEmpty) 'user-agent personalizzato',
+                    ].join(' · '),
+                    autofocus: i == 0,
+                    onTap: () => _sourceActions(src),
                   ),
                 _Tile(
-                  icon: Icons.swap_horiz_rounded,
-                  title: 'Cambia fonte',
-                  subtitle: 'Aggiungi un\'altra lista M3U o un altro account.',
-                  onTap: _changeSource,
+                  icon: Icons.refresh_rounded,
+                  title: _refreshing
+                      ? 'Aggiornamento in corso…'
+                      : 'Aggiorna tutte le fonti',
+                  subtitle: c == null
+                      ? ''
+                      : '${c.live.channels.length} canali · ${c.movies.length} film · '
+                            '${c.series.length} serie',
+                  onTap: _refreshing ? null : _refreshAll,
+                ),
+                _Tile(
+                  icon: Icons.add_rounded,
+                  title: 'Aggiungi una lista o un account',
+                  subtitle:
+                      'I canali presenti in più fonti diventano uno solo: '
+                      'una fa da riserva all\'altra.',
+                  onTap: _addSource,
+                ),
+                ListenableBuilder(
+                  listenable: app.user,
+                  builder: (context, _) => _Tile(
+                    icon: Icons.update_rounded,
+                    title: 'Aggiornamento automatico',
+                    subtitle: app.user.autoRefresh == AutoRefresh.off
+                        ? 'Le liste si aggiornano solo a mano.'
+                        : '${app.user.autoRefresh.label} (le liste da file '
+                              'si aggiornano scegliendo di nuovo il file).',
+                    onTap: _pickAutoRefresh,
+                  ),
                 ),
                 const _Header('Servizi di streaming'),
                 ListenableBuilder(
@@ -374,10 +659,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 _Tile(
+                  icon: Icons.fiber_manual_record_outlined,
+                  title: 'Registrazioni',
+                  subtitle: 'Programmate e salvate: guardale o cancellale.',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const RecordingsScreen()),
+                  ),
+                ),
+                _Tile(
                   icon: Icons.history_rounded,
                   title: 'Svuota canali recenti',
                   subtitle: 'Cancella l\'elenco "Visti di recente".',
                   onTap: _clearRecent,
+                ),
+                const _Header('Backup e manutenzione'),
+                _Tile(
+                  icon: Icons.save_alt_rounded,
+                  title: 'Salva un backup',
+                  subtitle:
+                      'Preferiti, avanzamento, canali e preferenze in un file '
+                      '(senza password né chiavi).',
+                  onTap: _saveBackup,
+                ),
+                _Tile(
+                  icon: Icons.settings_backup_restore_rounded,
+                  title: 'Ripristina un backup',
+                  subtitle:
+                      'Da un file salvato con Vista, anche su un altro '
+                      'dispositivo.',
+                  onTap: _restoreBackup,
+                ),
+                FutureBuilder<int>(
+                  future: _cacheSize,
+                  builder: (context, size) => _Tile(
+                    icon: Icons.cleaning_services_outlined,
+                    title: _cleaning ? 'Pulizia in corso…' : 'Svuota cache',
+                    subtitle: size.hasData
+                        ? 'Locandine, loghi e guide TV: '
+                              '${CacheCleaner.format(size.data!)}.'
+                        : 'Locandine, loghi e guide TV salvati.',
+                    onTap: _cleaning ? null : _clearCache,
+                  ),
+                ),
+                const _Header('Controllo genitori'),
+                ListenableBuilder(
+                  listenable: app.parental,
+                  builder: (context, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _Tile(
+                        icon: Icons.lock_outline_rounded,
+                        title: app.parental.enabled
+                            ? 'Cambia o togli il PIN'
+                            : 'Imposta un PIN',
+                        subtitle: app.parental.enabled
+                            ? '${app.parental.lockedChannels.length} canali e '
+                                  '${app.parental.lockedGroups.length} categorie '
+                                  'protetti.'
+                            : 'Proteggi canali, categorie e impostazioni.',
+                        onTap: _editPin,
+                      ),
+                      if (app.parental.enabled)
+                        _Tile(
+                          icon: Icons.settings_outlined,
+                          title: 'Proteggi le impostazioni',
+                          subtitle: app.parental.locksSettings
+                              ? 'Per entrare nelle impostazioni serve il PIN.'
+                              : 'Le impostazioni sono aperte a tutti.',
+                          trailing: ExcludeFocus(
+                            child: Switch(
+                              value: app.parental.locksSettings,
+                              onChanged: (v) =>
+                                  app.parental.setSettingsLocked(v),
+                            ),
+                          ),
+                          onTap: () => app.parental.setSettingsLocked(
+                            !app.parental.locksSettings,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
                 const _Header('Informazioni'),
                 const _Tile(

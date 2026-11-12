@@ -19,6 +19,8 @@
 
 ### Fonti
 - Liste **M3U** da indirizzo o da file, account **Xtream Codes**.
+- **Più fonti insieme**: lo stesso canale presente in più liste diventa uno solo con tutti i flussi, così una fa da riserva all'altra; film e serie restano separati, ognuno con la sua fonte.
+- **Aggiornamento automatico** (all'avvio, ogni 6, 12 o 24 ore), **user-agent** per fonte, nome personalizzato.
 - Canali doppi della lista **uniti in automatico** (stesso canale in 4K, FHD, HD…): il player sceglie il flusso migliore e, se si blocca, passa al successivo.
 - Nomi ripuliti da prefissi e suffissi (`IT |`, `[FHD]`, `(backup)`…), loghi presi dalla lista o da [tv-logos](https://github.com/tv-logo/tv-logos).
 
@@ -26,9 +28,17 @@
 - **Guida a griglia** con anteprima del canale, barra di avanzamento e categorie della lista.
 - Guida da [epg.lat](https://epg.lat), da quella della fonte e da un **link XMLTV personale**; **spostamento degli orari** se la guida è in anticipo o in ritardo.
 - Player con barra del programma, elenco canali sopra il video, **numero del canale** da telecomando, **canale precedente**, nuovi tentativi automatici se lo stream cade.
-- Menu del player: flusso, qualità video, tracce audio, sottotitoli, **formato dell'immagine** (adatta, zoom, allarga, 16:9, 4:3), **Multiview** fino a 4 canali.
+- Menu del player: flusso, qualità video, tracce audio, sottotitoli, **formato dell'immagine** (adatta, zoom, allarga, 16:9, 4:3), **Multiview** fino a 4 canali, **decodifica software** per i canali che scattano, **Picture-in-Picture** su Android e **finestra mini sempre in primo piano** su Windows, **apri con un altro player** (VLC, MX Player…).
 - Opzione per **riaprire l'ultimo canale** all'avvio.
-- **Gestione canali**: categorie a sinistra e canali a destra, rinomina, logo personalizzato, unione dei doppioni, **nascondi e mostra più canali insieme** (o un'intera categoria).
+- **Promemoria**: dalla guida, sul programma che deve iniziare (tasto Menu), Vista avvisa quando parte.
+- **Registrazione**: del canale che si guarda (menu del player) o programmata dalla guida, salvata così com'è senza ricodificare. Si sceglie la **qualità** (massima, fino a 1080p, 720p o 480p: si registra la versione più leggera che il fornitore offre, per esempio circa 3 GB per 2 ore a 720p), lo **spazio massimo** e se, arrivati al limite, fermarsi o cancellare le registrazioni più vecchie. Sotto 1,5 GB liberi sul disco si ferma comunque.
+- **Gestione canali**: categorie a sinistra e canali a destra, rinomina, logo personalizzato, unione dei doppioni, **numeri personalizzati** (che danno anche l'ordine), **sposta in un'altra categoria** (anche nuova), **nascondi e mostra più canali insieme**.
+- **Categorie**: rinomina, riordina, nascondi (anche per i canali che arriveranno).
+- **Controllo genitori**: PIN su canali, categorie e impostazioni.
+
+### Impostazioni
+- **Backup e ripristino** in un file (preferiti, avanzamento, canali, preferenze; senza password né chiavi).
+- **Svuota cache** (locandine, loghi e guide salvati).
 
 ### Film e serie
 - Cataloghi con categorie e ordinamenti, schede con trama, cast e trailer, stagioni ed episodi.
@@ -55,10 +65,10 @@
 |---|---|---|
 | Frecce | Canali e programmi | Su/Giù: canale precedente/successivo · con la barra aperta, Giù porta ai pulsanti |
 | OK / Invio | Guarda il canale | Elenco dei canali |
-| Menu | Modifica del canale | Audio, sottotitoli, flussi, immagine, Multiview |
+| Menu | Canale: preferito, PIN, nascondi, sposta, numero, promemoria, registra | Audio, sottotitoli, flussi, immagine, Multiview, registra, PiP |
 | 0–9 | — | Vai al canale con quel numero |
 | Canale precedente (o Backspace) | — | Torna al canale di prima |
-| Indietro / Esc | Categorie, poi barra laterale | Chiude pannelli e barra, poi esce |
+| Indietro / Esc | Categorie, poi barra laterale | Chiude pannelli e barra, poi esce (dalla finestra mini torna alla finestra normale) |
 | F11 (Windows) | Schermo intero | Schermo intero |
 
 ---
@@ -67,9 +77,9 @@
 
 ```
 app/              App Flutter (Android, Android TV, Windows)
-  lib/data/       Fonte, guida TV, dati utente, TMDB, cache delle immagini
+  lib/data/       Fonti, guida TV, dati utente, TMDB, PIN, backup, registrazioni, cache
   lib/screens/    Schermate (Home, TV in diretta, Film/Serie, Scopri, Player, Impostazioni…)
-  lib/player/     Menu del player e scelta del flusso
+  lib/player/     Menu del player, scelta del flusso, PiP e player esterno
   lib/widgets/    Componenti (guida a griglia, schede, marchio…)
   tool/           Generatore delle icone
 vista_resolver/   Pacchetto Dart puro: M3U, Xtream, XMLTV, TMDB, unione dei canali
@@ -120,6 +130,7 @@ dart test
 ```bash
 cd app
 flutter analyze
+flutter test
 ```
 
 ### Icone
@@ -136,6 +147,8 @@ flutter test tool/brand_icons_test.dart --dart-define=VISTA_FONT_DIR=<cartella c
 
 - **Gradle: "Unable to establish loopback connection"** (JDK 25 su Windows): compilare con
   `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:\cartella-inesistente`, così Gradle usa TCP.
+- Le **registrazioni** usano una connessione in più verso il fornitore: con gli abbonamenti
+  che ne permettono una sola, guardare e registrare insieme non funziona.
 - Negli **emulatori Android 16** il video resta nero (manca il contesto OpenGL ES che serve
   al player): sui dispositivi veri funziona. Avviare l'emulatore con `-gpu swiftshader_indirect`.
 
@@ -144,9 +157,7 @@ flutter test tool/brand_icons_test.dart --dart-define=VISTA_FONT_DIR=<cartella c
 ## Prossimi passi
 
 - Catch-up e "ricomincia dall'inizio" (Xtream `tv_archive`, M3U `catchup`).
-- Gruppi personalizzati, numeri dei canali, PIN per canali e impostazioni, backup.
-- Più liste insieme e aggiornamento automatico.
-- Promemoria, registrazione, Picture-in-Picture.
+- Promemoria e registrazioni anche ad app chiusa (oggi servono Vista aperta).
 - Samsung TV (Tizen).
 
 ## Crediti

@@ -3,6 +3,7 @@
 #include <flutter/standard_method_codec.h>
 
 #include <optional>
+#include <string>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -43,6 +44,29 @@ bool FlutterWindow::OnCreate() {
           result->Success(flutter::EncodableValue(full_screen_));
         } else if (call.method_name() == "isFullScreen") {
           result->Success(flutter::EncodableValue(full_screen_));
+        } else if (call.method_name() == "freeSpace") {
+          // Spazio libero (byte) sull'unità della cartella indicata.
+          const auto* path = std::get_if<std::string>(call.arguments());
+          if (path == nullptr) {
+            result->Success();
+            return;
+          }
+          const int n = MultiByteToWideChar(CP_UTF8, 0, path->c_str(), -1,
+                                            nullptr, 0);
+          std::wstring wide(n, L'\0');
+          MultiByteToWideChar(CP_UTF8, 0, path->c_str(), -1, wide.data(), n);
+          ULARGE_INTEGER free_bytes;
+          if (GetDiskFreeSpaceExW(wide.c_str(), &free_bytes, nullptr,
+                                  nullptr)) {
+            result->Success(flutter::EncodableValue(
+                static_cast<int64_t>(free_bytes.QuadPart)));
+          } else {
+            result->Success();
+          }
+        } else if (call.method_name() == "setMini") {
+          const auto* on = std::get_if<bool>(call.arguments());
+          SetMini(on != nullptr && *on);
+          result->Success(flutter::EncodableValue(mini_));
         } else {
           result->NotImplemented();
         }
@@ -84,6 +108,37 @@ void FlutterWindow::SetFullScreen(bool on) {
                      SWP_FRAMECHANGED);
   }
   full_screen_ = on;
+}
+
+void FlutterWindow::SetMini(bool on) {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr || on == mini_) {
+    return;
+  }
+  if (on) {
+    if (full_screen_) {
+      SetFullScreen(false);
+    }
+    mini_saved_.length = sizeof(WINDOWPLACEMENT);
+    GetWindowPlacement(hwnd, &mini_saved_);
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                   &monitor);
+    const RECT& work = monitor.rcWork;
+    const UINT dpi = GetDpiForWindow(hwnd);
+    const int width = MulDiv(480, dpi, 96);
+    const int height = MulDiv(300, dpi, 96);
+    const int margin = MulDiv(24, dpi, 96);
+    ShowWindow(hwnd, SW_RESTORE);
+    SetWindowPos(hwnd, HWND_TOPMOST, work.right - width - margin,
+                 work.bottom - height - margin, width, height,
+                 SWP_SHOWWINDOW);
+  } else {
+    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE);
+    SetWindowPlacement(hwnd, &mini_saved_);
+  }
+  mini_ = on;
 }
 
 void FlutterWindow::OnDestroy() {

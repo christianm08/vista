@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
+import '../app_scope.dart';
 import '../data/window_mode.dart';
 import '../player/stream_picker.dart';
 import '../player/video.dart';
@@ -138,7 +139,7 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
     t.failed = false;
     t.watchdog?.cancel();
     t.watchdog = Timer(_stall, () => _fail(t));
-    t.player.open(Media(t.picker.current.url));
+    t.player.open(streamMedia(context, t.picker.current.url));
   }
 
   void _ok(_Tile t) {
@@ -485,13 +486,20 @@ Future<Channel?> pickChannel(
   List<Channel> channels,
   EpgGuide? guide, {
   Set<String> exclude = const {},
-}) {
-  return Navigator.of(context).push<Channel>(
+}) async {
+  final parental = AppScope.of(context).parental;
+  final c = await Navigator.of(context).push<Channel>(
     MaterialPageRoute(
       builder: (_) =>
           _ChannelPicker(channels: channels, guide: guide, exclude: exclude),
     ),
   );
+  if (c == null || !context.mounted || !parental.isLocked(c)) return c;
+  final ok = await parental.unlock(
+    context,
+    reason: '${c.name} è protetto dal PIN.',
+  );
+  return ok ? c : null;
 }
 
 class _ChannelPicker extends StatefulWidget {

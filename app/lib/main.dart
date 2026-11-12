@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:vista_resolver/vista_resolver.dart';
 
 import 'app_scope.dart';
 import 'data/channel_logos.dart';
 import 'data/epg_store.dart';
+import 'data/parental_store.dart';
+import 'data/recordings.dart';
 import 'data/source_store.dart';
 import 'data/tmdb_store.dart';
 import 'data/user_store.dart';
 import 'data/window_mode.dart';
+import 'player/platform_player.dart';
 import 'screens/import_screen.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
@@ -16,6 +22,7 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  PlayerPlatform.init();
   // Più locandine decodificate in memoria: tornando indietro o scorrendo le
   // righe non si ridecodificano (il default è 100 MB / 1000 immagini).
   PaintingBinding.instance.imageCache
@@ -24,14 +31,26 @@ Future<void> main() async {
   await Future.wait([ChannelLogos.init(), Device.init()]);
   final user = UserStore();
   final tmdb = TmdbStore();
-  await Future.wait([user.load(), tmdb.init()]);
-  runApp(VistaApp(user: user, tmdb: tmdb));
+  final parental = ParentalStore();
+  await Future.wait([
+    user.load(),
+    tmdb.init(),
+    parental.load(),
+    RecordingService.instance.load(),
+  ]);
+  runApp(VistaApp(user: user, tmdb: tmdb, parental: parental));
 }
 
 class VistaApp extends StatefulWidget {
-  const VistaApp({super.key, required this.user, required this.tmdb});
+  const VistaApp({
+    super.key,
+    required this.user,
+    required this.tmdb,
+    required this.parental,
+  });
   final UserStore user;
   final TmdbStore tmdb;
+  final ParentalStore parental;
 
   @override
   State<VistaApp> createState() => _VistaAppState();
@@ -41,11 +60,105 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
   final _store = SourceStore();
   late final _epg = EpgStore(_store);
   final _nav = GlobalKey<NavigatorState>();
+  Timer? _autoRefresh;
+  Timer? _reminders;
+
+  /// Avvia e ferma le registrazioni programmate.
+  Future<void> _checkRecordings() async {
+    final lib = _store.library.value;
+    if (lib == null) return;
+    final service = RecordingService.instance;
+    await service.tick(lib.catalog.live.channels, (url) {
+      final ua = _store.userAgentFor(url);
+      return ua == null ? null : {'User-Agent': ua};
+    });
+    // Spazio finito, registrazione saltata…: lo si dice subito.
+    final warning = service.takeWarning();
+    final context = _nav.currentContext;
+    if (warning != null && context != null && context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(warning), duration: const Duration(seconds: 8)),
+      );
+    }
+  }
+
+  /// Ogni 20 s: i programmi con promemoria che stanno per iniziare.
+  void _checkReminders() {
+    final due = widget.user.takeDue();
+    final context = _nav.currentContext;
+    if (due.isEmpty || context == null) return;
+    for (final r in due) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xF0121720),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(VistaRadius.card),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.notifications_active_outlined),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  r.start.isAfter(DateTime.now())
+                      ? 'Sta per iniziare'
+                      : 'È iniziato',
+                ),
+              ),
+            ],
+          ),
+          content: Text('${r.title}\nsu ${r.channelName}'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Chiudi'),
+            ),
+            FilledButton(
+              autofocus: true,
+              onPressed: () {
+                Navigator.pop(ctx);
+                final lib = _store.library.value;
+                final channels = [
+                  for (final c
+                      in lib?.catalog.live.channels ?? const <Channel>[])
+                    if (!c.hidden) c,
+                ];
+                final c = channels
+                    .where((c) => c.key == r.channelKey)
+                    .firstOrNull;
+                final nav = _nav.currentContext;
+                if (c != null && nav != null) {
+                  Nav.playChannel(nav, channels, c);
+                }
+              },
+              child: const Text('Guarda'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  /// Riscarica in silenzio le liste più vecchie di quanto scelto.
+  Future<void> _refreshStale() async {
+    final age = widget.user.autoRefresh.maxAge;
+    if (age == null || _store.sources.isEmpty) return;
+    await _store.refreshAll(olderThan: age);
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Controllo ogni ora (per chi tiene l'app aperta a lungo, es. sulla TV).
+    _reminders = Timer.periodic(const Duration(seconds: 20), (_) {
+      _checkReminders();
+      _checkRecordings();
+    });
+    _autoRefresh = Timer.periodic(const Duration(hours: 1), (_) {
+      if (widget.user.autoRefresh != AutoRefresh.start) _refreshStale();
+    });
     // Su TV il focus si vede sempre, anche prima del primo tasto; su PC e
     // telefono solo usando la tastiera.
     FocusManager.instance.highlightStrategy = Device.isTv
@@ -56,6 +169,8 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _autoRefresh?.cancel();
+    _reminders?.cancel();
     _epg.dispose();
     super.dispose();
   }
@@ -76,6 +191,7 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
       epg: _epg,
       user: widget.user,
       tmdb: widget.tmdb,
+      parental: widget.parental,
       child: MaterialApp(
         title: 'Vista',
         debugShowCheckedModeBanner: false,
@@ -90,13 +206,18 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
         builder: (context, child) => CallbackShortcuts(
           bindings: {
             const SingleActivator(LogicalKeyboardKey.escape): () {
+              // Dalla finestra mini, Esc torna prima alla finestra normale.
+              if (PlayerPlatform.pip.value) {
+                PlayerPlatform.exitPip();
+                return;
+              }
               if (!WindowMode.leaveOnEscape()) _nav.currentState?.maybePop();
             },
             const SingleActivator(LogicalKeyboardKey.f11): WindowMode.toggle,
           },
           child: TvCanvas(child: VistaBackground(child: child!)),
         ),
-        home: _Root(store: _store),
+        home: _Root(store: _store, onLoaded: _refreshStale),
       ),
     );
   }
@@ -104,8 +225,11 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
 
 /// Mostra l'importazione se non c'è una fonte, altrimenti l'app.
 class _Root extends StatefulWidget {
-  const _Root({required this.store});
+  const _Root({required this.store, required this.onLoaded});
   final SourceStore store;
+
+  /// Dopo la lettura delle fonti salvate (es. aggiornamento automatico).
+  final Future<void> Function() onLoaded;
 
   @override
   State<_Root> createState() => _RootState();
@@ -121,6 +245,7 @@ class _RootState extends State<_Root> {
     widget.store.load().then(
       (_) {
         if (mounted) setState(() => _loading = false);
+        unawaited(widget.onLoaded());
       },
       onError: (Object e) {
         if (mounted) {

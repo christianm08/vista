@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 import '../app_scope.dart';
+import '../data/recordings.dart';
+import '../data/source_store.dart' show redactError;
 import '../data/user_store.dart';
 import '../theme.dart';
+import '../widgets/channel_dialogs.dart';
 import '../widgets/channel_logo.dart';
 import '../widgets/epg_guide.dart';
 import '../widgets/focus_card.dart';
@@ -128,7 +131,10 @@ class _LiveScreenState extends State<LiveScreen> {
       (_all, _allChannels.length),
       if (fav > 0) (_favorites, fav),
       if (rec > 0) (_recent, rec),
-      for (final e in _byGroup.entries) (e.key, e.value.length),
+      for (final g in AppScope.of(
+        context,
+      ).store.prefs.orderGroups(_byGroup.keys))
+        (g, _byGroup[g]!.length),
     ];
   }
 
@@ -164,6 +170,32 @@ class _LiveScreenState extends State<LiveScreen> {
     final app = AppScope.of(context);
     final key = UserKey.channel(c.key);
     final fav = app.user.isFavorite(key);
+    // Programma sotto il cursore della guida, se deve ancora iniziare.
+    final sel = _selection.value;
+    final upcoming =
+        sel != null &&
+            sel.channel.key == c.key &&
+            sel.programme != null &&
+            sel.programme!.start.isAfter(DateTime.now())
+        ? sel.programme
+        : null;
+    final reminded =
+        upcoming != null &&
+        app.user.hasReminder(c.key, upcoming.start.toLocal());
+    // Programma sotto il cursore non ancora finito: si può registrare.
+    final recordable =
+        sel != null &&
+            sel.channel.key == c.key &&
+            sel.programme != null &&
+            sel.programme!.stop.isAfter(DateTime.now())
+        ? sel.programme
+        : null;
+    final recording =
+        recordable != null &&
+        RecordingService.instance.isScheduled(
+          c.key,
+          recordable.start.toLocal(),
+        );
     final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -181,12 +213,67 @@ class _LiveScreenState extends State<LiveScreen> {
           ],
         ),
         children: [
+          if (recordable != null)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, 'record'),
+              child: _ActionRow(
+                recording
+                    ? Icons.stop_circle_outlined
+                    : Icons.fiber_manual_record_outlined,
+                recording
+                    ? 'Annulla la registrazione'
+                    : 'Registra: ${recordable.title}',
+              ),
+            ),
+          if (upcoming != null)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, 'remind'),
+              child: _ActionRow(
+                reminded
+                    ? Icons.notifications_off_outlined
+                    : Icons.notifications_active_outlined,
+                reminded
+                    ? 'Togli il promemoria'
+                    : 'Ricordamelo: ${upcoming.title} '
+                          '(${hhmm(upcoming.start)})',
+              ),
+            ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, 'fav'),
             child: _ActionRow(
               fav ? Icons.star_rounded : Icons.star_outline_rounded,
               fav ? 'Togli dai preferiti' : 'Aggiungi ai preferiti',
             ),
+          ),
+          if (app.parental.enabled)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, 'lock'),
+              child: _ActionRow(
+                app.parental.lockedChannels.contains(c.key)
+                    ? Icons.lock_open_rounded
+                    : Icons.lock_outline_rounded,
+                app.parental.lockedChannels.contains(c.key)
+                    ? 'Togli il PIN'
+                    : 'Proteggi col PIN',
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'hide'),
+            child: const _ActionRow(
+              Icons.visibility_off_outlined,
+              'Nascondi canale',
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'move'),
+            child: const _ActionRow(
+              Icons.drive_file_move_outline,
+              'Sposta in categoria',
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'number'),
+            child: _ActionRow(Icons.pin_outlined, 'Numero (${c.number})'),
           ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, 'edit'),
@@ -196,7 +283,122 @@ class _LiveScreenState extends State<LiveScreen> {
       ),
     );
     if (!mounted) return;
-    if (choice == 'fav') {
+    Future<void> save(
+      ChannelPrefs Function(ChannelPrefs) change,
+      String done,
+    ) async {
+      try {
+        await app.store.updatePrefs(change(app.store.prefs));
+        if (mounted) showToast(context, done);
+      } catch (e) {
+        if (mounted) {
+          showToast(context, 'Modifica non salvata: ${redactError(e)}');
+        }
+      }
+    }
+
+    if (choice == 'record' && recordable != null) {
+      final s = ScheduledRecording(
+        channelKey: c.key,
+        channelName: c.name,
+        title: recordable.title,
+        start: recordable.start.toLocal(),
+        end: recordable.stop.toLocal(),
+      );
+      if (recording) {
+        await RecordingService.instance.cancel(s);
+        if (mounted) showToast(context, 'Registrazione annullata.');
+      } else {
+        final service = RecordingService.instance;
+        service.schedule(s);
+        // Se il programma è già iniziato si registra da adesso.
+        final from = s.recordFrom.isAfter(DateTime.now())
+            ? s.recordFrom
+            : DateTime.now();
+        final size = service.quality.estimate(s.recordTo.difference(from));
+        showToast(
+          context,
+          recordable.start.isAfter(DateTime.now())
+              ? 'Registrerò ${recordable.title} (${hhmm(recordable.start)}), '
+                    '$size in qualità ${service.quality.label}.'
+              : 'Registrazione di ${recordable.title} avviata ($size).',
+        );
+      }
+    } else if (choice == 'remind' && upcoming != null) {
+      final start = upcoming.start.toLocal();
+      if (reminded) {
+        app.user.removeReminder(c.key, start);
+        showToast(context, 'Promemoria tolto.');
+      } else {
+        app.user.addReminder(
+          Reminder(
+            channelKey: c.key,
+            channelName: c.name,
+            title: upcoming.title,
+            start: start,
+          ),
+        );
+        showToast(
+          context,
+          'Ti avviso quando inizia ${upcoming.title} (${hhmm(upcoming.start)}).',
+        );
+      }
+    } else if (choice == 'lock') {
+      final locked = app.parental.lockedChannels.contains(c.key);
+      if (locked &&
+          !await app.parental.unlock(
+            context,
+            reason: 'Serve il PIN per sbloccare.',
+          )) {
+        return;
+      }
+      await app.parental.setChannelLocked(c.key, !locked);
+      if (mounted) {
+        showToast(
+          context,
+          locked
+              ? '${c.name} non più protetto.'
+              : '${c.name} protetto dal PIN.',
+        );
+      }
+    } else if (choice == 'hide') {
+      await save(
+        (p) => p.setHidden(c.key, true),
+        '${c.name} nascosto. Lo ritrovi in Gestisci canali.',
+      );
+    } else if (choice == 'move') {
+      final to = await pickGroup(
+        context,
+        groups: app.store.prefs.orderGroups({
+          for (final ch in _allChannels) ch.group,
+        }),
+        current: c.group,
+        canReset: (app.store.prefs.overrides[c.key]?.group ?? '').isNotEmpty,
+      );
+      if (to != null && to != c.group && mounted) {
+        await save(
+          (p) => p.moveToGroup(c.key, to),
+          to.isEmpty
+              ? '${c.name} tornato nella categoria della lista.'
+              : '${c.name} spostato in "$to".',
+        );
+      }
+    } else if (choice == 'number') {
+      final n = await askChannelNumber(
+        context,
+        channelName: c.name,
+        current: c.number,
+        custom: c.renumbered,
+      );
+      if (n != null && mounted) {
+        await save(
+          (p) => p.setNumber(c.key, n == 0 ? null : n),
+          n == 0
+              ? 'Torna il numero della lista.'
+              : '${c.name} ora è il canale $n.',
+        );
+      }
+    } else if (choice == 'fav') {
       app.user.toggleFavorite(key);
       showToast(
         context,
@@ -289,7 +491,14 @@ class _LiveScreenState extends State<LiveScreen> {
                                 status: app.epg.status.value,
                                 preview: LivePreview(
                                   channel: selection?.channel ?? channels.first,
-                                  enabled: _previewOn && !_panel,
+                                  enabled:
+                                      _previewOn &&
+                                      !_panel &&
+                                      (!app.parental.isLocked(
+                                            selection?.channel ??
+                                                channels.first,
+                                          ) ||
+                                          app.parental.isUnlocked),
                                 ),
                               );
                             },

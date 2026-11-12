@@ -104,6 +104,8 @@ class Channel {
     this.customLogo = '',
     this.renamed = false,
     this.hidden = false,
+    this.groupHidden = false,
+    this.renumbered = false,
   });
 
   /// Nome normalizzato usato per raggruppare (es. `rai 1`).
@@ -139,16 +141,32 @@ class Channel {
   /// impostazioni dei canali.
   final bool hidden;
 
+  /// Nascosto perché è nascosta la sua categoria (anche i canali che la
+  /// lista aggiungerà in futuro a quella categoria).
+  final bool groupHidden;
+
+  /// Il numero è stato scelto dall'utente.
+  final bool renumbered;
+
   bool get isMerged => sourceNames.length > 1;
   Quality get bestQuality => streams.first.quality;
 
-  Channel copyWith({String? name, String? customLogo, bool? renamed, bool? hidden}) =>
+  Channel copyWith({
+    String? name,
+    String? customLogo,
+    bool? renamed,
+    bool? hidden,
+    int? number,
+    String? group,
+    bool? groupHidden,
+    bool? renumbered,
+  }) =>
       Channel(
         key: key,
-        number: number,
+        number: number ?? this.number,
         name: name ?? this.name,
         monogram: name == null ? monogram : _monogram(name),
-        group: group,
+        group: group ?? this.group,
         streams: streams,
         sourceNames: sourceNames,
         tvgId: tvgId,
@@ -156,6 +174,8 @@ class Channel {
         customLogo: customLogo ?? this.customLogo,
         renamed: renamed ?? this.renamed,
         hidden: hidden ?? this.hidden,
+        groupHidden: groupHidden ?? this.groupHidden,
+        renumbered: renumbered ?? this.renumbered,
       );
 }
 
@@ -212,6 +232,21 @@ class Movie {
   /// Quando il titolo è stato aggiunto alla fonte (Xtream `added`).
   final DateTime? added;
   final String genre;
+
+  /// Lo stesso film con un altro ID (film di più fonti insieme).
+  Movie withId(String newId) => Movie(
+        id: newId,
+        title: title,
+        url: url,
+        poster: poster,
+        group: group,
+        year: year,
+        rating: rating,
+        plot: plot,
+        added: added,
+        genre: genre,
+        tmdbId: tmdbId,
+      );
 }
 
 /// Informazioni complete di un film o di una serie, chieste all'apertura
@@ -270,6 +305,18 @@ class Episode {
   final String image;
   final Duration? duration;
 
+  /// Lo stesso episodio con un altro ID (episodi di più fonti insieme).
+  Episode withId(String newId) => Episode(
+        id: newId,
+        title: title,
+        url: url,
+        season: season,
+        number: number,
+        plot: plot,
+        image: image,
+        duration: duration,
+      );
+
   /// `S01E02`.
   String get code =>
       'S${season.toString().padLeft(2, '0')}E${number.toString().padLeft(2, '0')}';
@@ -309,6 +356,24 @@ class Series {
   final DateTime? added;
   final String genre;
   final String backdrop;
+
+  /// La stessa serie, e i suoi episodi, con [prefix] davanti agli ID.
+  Series withIdPrefix(String prefix) => prefix.isEmpty
+      ? this
+      : Series(
+          id: '$prefix$id',
+          title: title,
+          poster: poster,
+          group: group,
+          year: year,
+          rating: rating,
+          plot: plot,
+          episodes: [for (final e in episodes) e.withId('$prefix${e.id}')],
+          added: added,
+          genre: genre,
+          backdrop: backdrop,
+          tmdbId: tmdbId,
+        );
 
   Series withEpisodes(List<Episode> eps) => Series(
         id: id,

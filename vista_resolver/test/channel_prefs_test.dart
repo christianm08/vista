@@ -71,6 +71,62 @@ void main() {
     expect(prefs.hidden, {'canale primo'});
   });
 
+  group('categorie e numeri', () {
+    const grouped = '''
+#EXTM3U
+#EXTINF:-1 group-title="IT | Nazionali",Rai 1
+http://s/rai1
+#EXTINF:-1 group-title="IT | Nazionali",Rai 2
+http://s/rai2
+#EXTINF:-1 group-title="Sport",Sky Sport
+http://s/sport
+#EXTINF:-1 group-title="Sport",DAZN
+http://s/dazn
+''';
+    List<Channel> applied(ChannelPrefs p) =>
+        p.apply(resolveChannels(parseM3u(grouped)).channels);
+
+    test('rinomina, nascondi e ordina le categorie', () {
+      var p = const ChannelPrefs().renameGroup('IT | Nazionali', 'Nazionali');
+      expect(applied(p).map((c) => c.group), ['Nazionali', 'Nazionali', 'Sport', 'Sport']);
+      // Nascosta per nome: vale anche per i canali che arriveranno.
+      p = p.setGroupHidden('Sport', true);
+      expect(applied(p).where((c) => c.hidden).map((c) => (c.name, c.groupHidden)),
+          [('Sky Sport', true), ('Dazn', true)]);
+      // Rinominare porta con sé visibilità e ordine.
+      p = p.moveGroup(['Nazionali', 'Sport'], 'Sport', -1).renameGroup('Sport', 'Calcio');
+      expect(p.hiddenGroups, {'Calcio'});
+      expect(p.orderGroups(['Nazionali', 'Calcio', 'Nuova']), ['Calcio', 'Nazionali', 'Nuova']);
+      // Rinominando di nuovo col nome della lista, la rinomina sparisce.
+      p = p.renameGroup('Nazionali', 'IT | Nazionali');
+      expect(p.groupNames, {'Sport': 'Calcio'});
+    });
+
+    test('canale spostato in una categoria nuova, poi rinominata', () {
+      var p = const ChannelPrefs().moveToGroup('dazn', 'Preferiti miei');
+      expect(applied(p).firstWhere((c) => c.key == 'dazn').group, 'Preferiti miei');
+      p = p.renameGroup('Preferiti miei', 'I miei');
+      expect(p.overrides['dazn']!.group, 'I miei');
+      p = p.moveToGroup('dazn', '');
+      expect(p.overrides, isEmpty); // tornato com'era: nessuna voce vuota
+    });
+
+    test('numeri personalizzati: ordine e pareggi', () {
+      final p = const ChannelPrefs().setNumber('dazn', 1).setNumber('sky sport', 10);
+      final c = applied(p);
+      expect(c.map((c) => (c.name, c.number)),
+          [('Dazn', 1), ('Rai 1', 1), ('Rai 2', 2), ('Sky Sport', 10)]);
+      expect(c.first.renumbered, isTrue);
+      expect(p.setNumber('dazn', null).overrides.keys, ['sky sport']);
+      final back = ChannelPrefs.fromJson(
+          jsonDecode(jsonEncode(p.renameGroup('Sport', 'S').setGroupHidden('S', true).toJson()))
+              as Map<String, dynamic>);
+      expect(back.overrides['dazn']!.number, 1);
+      expect(back.groupNames, {'Sport': 'S'});
+      expect(back.hiddenGroups, {'S'});
+    });
+  });
+
   test('JSON andata e ritorno, senza voci vuote', () {
     final prefs = const ChannelPrefs()
         .merge('canale primo', 'rai 1')

@@ -147,6 +147,18 @@ class _AppShellState extends State<AppShell> {
   // --- navigazione -------------------------------------------------------------
 
   void _go(Destination d, {bool focusContent = true}) {
+    final parental = AppScope.of(context).parental;
+    if (d == Destination.settings &&
+        d != _current &&
+        parental.locksSettings &&
+        !parental.isUnlocked) {
+      parental
+          .unlock(context, reason: 'Le impostazioni sono protette dal PIN.')
+          .then((ok) {
+            if (ok && mounted) _go(d, focusContent: focusContent);
+          });
+      return;
+    }
     if (d != _current) setState(() => _current = d);
     if (focusContent) _focusContentSoon();
   }
@@ -368,7 +380,9 @@ class _AppShellState extends State<AppShell> {
                   items: _destinations,
                   current: _current,
                   expanded: open,
-                  source: widget.library.source.label,
+                  source: widget.library.sources.length > 1
+                      ? '${widget.library.sources.length} fonti'
+                      : widget.library.source.displayName,
                   onFocusChange: (v) => setState(() => _navFocused = v),
                   onSelect: _go,
                   onRight: _focusContent,

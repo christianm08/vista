@@ -13,10 +13,18 @@ enum _Mode { m3u, xtream }
 /// file) oppure un account Xtream. La fonte caricata arriva alla home da
 /// [SourceStore.library].
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key, required this.store, this.initialError});
-
+  const ImportScreen({
+    super.key,
+    required this.store,
+    this.initialError,
+    this.adding = false,
+  });
   final SourceStore store;
   final String? initialError;
+
+  /// Aggiunge un'altra fonte a quelle che ci sono (da Impostazioni): a
+  /// lavoro finito la schermata si chiude.
+  final bool adding;
 
   @override
   State<ImportScreen> createState() => _ImportScreenState();
@@ -27,13 +35,14 @@ class _ImportScreenState extends State<ImportScreen> {
   final _server = TextEditingController();
   final _user = TextEditingController();
   final _pass = TextEditingController();
+  final _agent = TextEditingController();
   _Mode _mode = _Mode.m3u;
   String? _busy; // testo dell'operazione in corso
   late String? _error = widget.initialError;
 
   @override
   void dispose() {
-    for (final c in [_url, _server, _user, _pass]) {
+    for (final c in [_url, _server, _user, _pass, _agent]) {
       c.dispose();
     }
     super.dispose();
@@ -46,6 +55,10 @@ class _ImportScreenState extends State<ImportScreen> {
     });
     try {
       await job(); // la nuova fonte arriva da store.library
+      if (widget.adding && mounted) {
+        Navigator.of(context).pop(true);
+        return;
+      }
     } on SourceException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
@@ -62,7 +75,10 @@ class _ImportScreenState extends State<ImportScreen> {
     final busy = xtreamFromM3uUrl(url) != null
         ? 'Link Xtream riconosciuto: accedo e scarico canali, film e serie…'
         : 'Scarico la lista…';
-    _run(busy, () => widget.store.importM3uUrl(url));
+    _run(
+      busy,
+      () => widget.store.importM3uUrl(url, userAgent: _agent.text.trim()),
+    );
   }
 
   void _fromFile() {
@@ -85,6 +101,7 @@ class _ImportScreenState extends State<ImportScreen> {
           username: _user.text,
           password: _pass.text,
         ),
+        userAgent: _agent.text.trim(),
       ),
     );
   }
@@ -107,6 +124,15 @@ class _ImportScreenState extends State<ImportScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (widget.adding)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(Icons.arrow_back_rounded),
+                            label: const Text('Indietro'),
+                          ),
+                        ),
                       Text(
                         'Vista',
                         style: t.displaySmall?.copyWith(
@@ -115,7 +141,9 @@ class _ImportScreenState extends State<ImportScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Aggiungi la tua fonte',
+                        widget.adding
+                            ? 'Aggiungi un\'altra fonte'
+                            : 'Aggiungi la tua fonte',
                         style: t.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -142,6 +170,23 @@ class _ImportScreenState extends State<ImportScreen> {
                         ..._m3uForm(busy)
                       else
                         ..._xtreamForm(busy),
+                      const SizedBox(height: 16),
+                      TvTextField(
+                        controller: _agent,
+                        enabled: !busy,
+                        hint: 'User-agent (facoltativo)',
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        widget.adding
+                            ? 'I canali presenti in più fonti diventano uno '
+                                  'solo: se una si blocca, il player usa l\'altra.'
+                            : 'Lascialo vuoto, a meno che il fornitore non ne '
+                                  'chieda uno preciso.',
+                        style: t.bodySmall?.copyWith(
+                          color: VistaColors.textTertiary,
+                        ),
+                      ),
                       if (busy) ...[
                         const SizedBox(height: 20),
                         const Center(child: CircularProgressIndicator()),
