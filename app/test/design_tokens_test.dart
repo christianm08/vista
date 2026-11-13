@@ -15,6 +15,7 @@ const _migrated = [
   'lib/widgets/vista_preview.dart',
   'lib/screens/gallery_screen.dart',
   'lib/screens/home_screen.dart',
+  'lib/widgets/list_titles.dart',
 ];
 
 /// Valori scritti a mano che devono stare solo in lib/tokens.dart.

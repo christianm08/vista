@@ -235,7 +235,8 @@ class VistaPosterCard extends StatelessWidget {
               NetImage(
                 image,
                 cacheWidth: _cacheWidth(context, restWidth),
-                fallback: VistaArtFallback(title),
+                // Il titolo nel riquadro solo se non è già scritto sotto.
+                fallback: VistaArtFallback(title, showTitle: !showText),
               ),
               if (label.isNotEmpty)
                 Positioned(

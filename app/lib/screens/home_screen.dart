@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 import '../app_scope.dart';
+import '../data/tmdb_store.dart';
 import '../data/user_store.dart';
 import '../theme.dart';
 import '../widgets/channel_logo.dart';
 import '../widgets/epg_guide.dart' show hhmm;
+import '../widgets/list_titles.dart';
 import '../widgets/tmdb_row.dart';
 import '../widgets/vista_cards.dart';
 import '../widgets/vista_controls.dart';
@@ -34,9 +36,18 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _now = DateTime.now();
   late final Timer _clock;
 
-  /// Anteprima del contenuto dove il fuoco si è fermato.
+  /// Anteprima del contenuto dove il fuoco si è fermato. [_source] la
+  /// ricalcola quando arrivano dati in ritardo (abbinamento TMDB, servizio).
   final _preview = ValueNotifier<VistaPreviewData?>(null);
+  VistaPreviewData Function()? _source;
   Timer? _settle;
+
+  late TmdbStore _tmdb;
+  late UserStore _user;
+  final _titles = ListTitles.instance;
+
+  /// Su quale dei tuoi servizi si guarda un titolo TMDB ('' = non si sa).
+  final _serviceOf = <String, String>{};
 
   // Calcoli costosi sulle liste grandi, rifatti solo al cambio di catalogo.
   Catalog? _memoFor;
@@ -51,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _titles.addListener(_refreshPreview);
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
@@ -60,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _clock.cancel();
     _settle?.cancel();
+    _titles.removeListener(_refreshPreview);
     _preview.dispose();
     super.dispose();
   }
@@ -101,17 +114,50 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
-  /// Il fuoco arriva su un contenuto: l'anteprima lo segue quando si ferma.
-  void _focus(VistaPreviewData d) {
+  /// Il fuoco arriva su un contenuto: l'anteprima lo segue quando si ferma
+  /// (e solo allora, con [onSettle], si chiedono i dati che mancano).
+  void _focus(VistaPreviewData Function() d, {VoidCallback? onSettle}) {
     _settle?.cancel();
     _settle = Timer(VistaMotion.backdropDelay, () {
-      if (mounted) _preview.value = d;
+      if (!mounted) return;
+      _source = d;
+      _preview.value = d();
+      onSettle?.call();
     });
   }
 
   ValueChanged<bool> _onFocus(VistaPreviewData Function() d) => (has) {
-    if (has) _focus(d());
+    if (has) _focus(d);
   };
+
+  void _refreshPreview() {
+    final f = _source;
+    if (f != null && mounted) _preview.value = f();
+  }
+
+  /// Il primo dei tuoi servizi su cui c'è il titolo, per il sopratitolo.
+  Future<void> _loadService(TmdbTitle t) async {
+    if (_serviceOf.containsKey(t.key)) return;
+    _serviceOf[t.key] = '';
+    final tmdb = _tmdb;
+    final services = _user.services;
+    try {
+      final ids = withVariants(services, await tmdb.providers()).toSet();
+      final d = await tmdb.details(t.type, t.id);
+      for (final (p, kind) in d.availability.distinct) {
+        if (kind != OfferKind.flatrate &&
+            kind != OfferKind.free &&
+            kind != OfferKind.ads) {
+          continue;
+        }
+        if (ids.contains(p.id)) {
+          _serviceOf[t.key] = p.name;
+          break;
+        }
+      }
+    } catch (_) {}
+    _refreshPreview();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,6 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
         app.store.library,
         app.user,
         app.epg.guide,
+        _titles,
       ]),
       builder: (context, _) {
         final lib = app.library;
@@ -134,6 +181,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _build(BuildContext context, AppScope app, Catalog catalog) {
     final layout = VistaLayout.of(context);
     final user = app.user;
+    _tmdb = app.tmdb;
+    _user = user;
     final guide = app.epg.guide.value;
     final channels = _channels;
     final byKey = _channelsByKey;
@@ -235,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (context, i) {
           final p = resume[i];
           return VistaWideCard(
-            title: p.title,
+            title: _resumePreview(p).title,
             meta: [
               if (p.subtitle.isNotEmpty) p.subtitle,
               'mancano ${formatDuration(p.duration - p.position)}',
@@ -270,7 +319,8 @@ class _HomeScreenState extends State<HomeScreen> {
           key: ValueKey('home-svc-${user.services.join(',')}'),
           title: 'Popolari sui tuoi servizi',
           showText: posterText,
-          onFocusTitle: (t) => _focus(_tmdbPreview(t)),
+          onFocusTitle: (t) =>
+              _focus(() => _tmdbPreview(t), onSettle: () => _loadService(t)),
           load: () async {
             final ids = withVariants(
               user.services,
@@ -294,7 +344,7 @@ class _HomeScreenState extends State<HomeScreen> {
         channelRow('recent-channels', 'Visti di recente', recent),
       if (onAir.isNotEmpty) channelRow('on-air', 'In onda ora', onAir),
       for (final (group, movies) in _movieGroups)
-        posterRow('group-$group', group, movies),
+        posterRow('group-$group', cleanGroupName(group), movies),
       if (onAir.isEmpty && favChannels.isEmpty && channels.isNotEmpty)
         channelRow('channels', 'Canali', channels.take(20).toList()),
     ];
@@ -308,13 +358,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // Prima anteprima: il primo contenuto, finché il fuoco non si sposta.
-    _preview.value ??= resume.isNotEmpty
-        ? _resumePreview(resume.first)
-        : _recentMovies.isNotEmpty
-        ? _moviePreview(_recentMovies.first)
-        : _recentSeries.isNotEmpty
-        ? _seriesPreview(_recentSeries.first)
-        : null;
+    if (_source == null) {
+      final p = resume.firstOrNull;
+      final m = _recentMovies.firstOrNull;
+      final sr = _recentSeries.firstOrNull;
+      _source = p != null
+          ? () => _resumePreview(p)
+          : m != null
+          ? () => _moviePreview(m)
+          : sr != null
+          ? () => _seriesPreview(sr)
+          : null;
+      _preview.value = _source?.call();
+    }
 
     if (compact) {
       return VistaRowsPage(
@@ -367,58 +423,96 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- anteprime -------------------------------------------------------------
 
+  /// Titolo da mostrare: quello di TMDB se c'è l'abbinamento, altrimenti
+  /// quello della lista ripulito.
+  String _movieTitle(Movie m) => listTitle(m.title, _titles.movie(_tmdb, m));
+  String _seriesTitle(Series s) => listTitle(s.title, _titles.series(_tmdb, s));
+
+  static String _backdropOf(TmdbTitle? t) =>
+      t == null || t.backdropPath.isEmpty ? '' : t.backdrop;
+
+  static String _rating(String list, TmdbTitle? t) => list.isNotEmpty
+      ? '$list/10'
+      : (t != null && t.rating > 0
+            ? '${t.rating.toStringAsFixed(1).replaceAll('.', ',')}/10'
+            : '');
+
   VistaPreviewData _resumePreview(WatchProgress p) {
     final series = p.seriesId == null ? null : _seriesById[p.seriesId];
+    final movie = p.key.startsWith('mv:')
+        ? _moviesById[p.key.substring(3)]
+        : null;
+    final left = '${formatDuration(p.duration - p.position)} rimanenti';
+    if (series == null && movie != null) {
+      final m = _moviePreview(movie);
+      return VistaPreviewData(
+        id: 'pr:${p.key}',
+        kicker: 'Film · Continua a guardare',
+        title: m.title,
+        meta: m.meta,
+        plot: m.plot,
+        note: left,
+        backdrop: m.backdrop,
+        poster: m.poster.isNotEmpty ? m.poster : p.image,
+      );
+    }
+    final s = series == null ? null : _seriesPreview(series);
     return VistaPreviewData(
       id: 'pr:${p.key}',
-      kicker: series != null
-          ? 'Serie · Continua a guardare'
-          : 'Continua a guardare',
-      title: series?.title ?? p.title,
-      meta: p.subtitle.isNotEmpty
-          ? p.subtitle
-          : (series == null ? '' : _seriesMeta(series)),
-      plot: series?.plot ?? '',
-      note: '${formatDuration(p.duration - p.position)} rimanenti',
-      backdrop: series?.backdrop ?? '',
-      poster: series?.poster ?? p.image,
+      kicker: s != null ? 'Serie · Continua a guardare' : 'Continua a guardare',
+      title: s?.title ?? cleanListTitle(p.title),
+      meta: p.subtitle.isNotEmpty ? p.subtitle : (s?.meta ?? ''),
+      plot: s?.plot ?? '',
+      note: left,
+      backdrop: s?.backdrop ?? '',
+      poster: s != null && s.poster.isNotEmpty ? s.poster : p.image,
     );
   }
 
-  VistaPreviewData _moviePreview(Movie m) => VistaPreviewData(
-    id: 'mv:${m.id}',
-    kicker: 'Film · IPTV',
-    title: m.title,
-    meta: metaLine([
-      if (m.year != null) '${m.year}',
-      m.genre.isNotEmpty ? m.genre : m.group,
-      if (m.rating.isNotEmpty) '${m.rating}/10',
-    ]),
-    plot: m.plot,
-    poster: m.poster,
-  );
+  VistaPreviewData _moviePreview(Movie m) {
+    final t = _titles.movie(_tmdb, m);
+    return VistaPreviewData(
+      id: 'mv:${m.id}',
+      kicker: 'Film · IPTV',
+      title: listTitle(m.title, t),
+      meta: metaLine([
+        if ((m.year ?? t?.year ?? yearInTitle(m.title)) case final y?) '$y',
+        // Il genere solo se la fonte lo dà: le categorie della lista
+        // ("IT: PELLICOLA 2025") non lo sono.
+        if (m.genre.isNotEmpty) m.genre,
+        _rating(m.rating, t),
+      ]),
+      plot: m.plot.isNotEmpty ? m.plot : (t?.overview ?? ''),
+      backdrop: _backdropOf(t),
+      poster: m.poster.isNotEmpty ? m.poster : (t?.poster ?? ''),
+    );
+  }
 
-  String _seriesMeta(Series s) => metaLine([
-    if (s.year != null) '${s.year}',
-    s.genre.isNotEmpty ? s.genre : s.group,
-    if (s.rating.isNotEmpty) '${s.rating}/10',
-  ]);
-
-  VistaPreviewData _seriesPreview(Series s) => VistaPreviewData(
-    id: 'sr:${s.id}',
-    kicker: 'Serie · IPTV',
-    title: s.title,
-    meta: _seriesMeta(s),
-    plot: s.plot,
-    backdrop: s.backdrop,
-    poster: s.poster,
-  );
+  VistaPreviewData _seriesPreview(Series s) {
+    final t = _titles.series(_tmdb, s);
+    return VistaPreviewData(
+      id: 'sr:${s.id}',
+      kicker: 'Serie · IPTV',
+      title: listTitle(s.title, t),
+      meta: metaLine([
+        if ((s.year ?? t?.year ?? yearInTitle(s.title)) case final y?) '$y',
+        if (s.genre.isNotEmpty) s.genre,
+        _rating(s.rating, t),
+      ]),
+      plot: s.plot.isNotEmpty ? s.plot : (t?.overview ?? ''),
+      backdrop: s.backdrop.isNotEmpty ? s.backdrop : _backdropOf(t),
+      poster: s.poster.isNotEmpty ? s.poster : (t?.poster ?? ''),
+    );
+  }
 
   VistaPreviewData _tmdbPreview(TmdbTitle t) => VistaPreviewData(
     id: t.key,
-    kicker: t.type == MediaType.tv
-        ? 'Serie · Sui tuoi servizi'
-        : 'Film · Sui tuoi servizi',
+    kicker: [
+      t.type == MediaType.tv ? 'Serie' : 'Film',
+      (_serviceOf[t.key] ?? '').isNotEmpty
+          ? _serviceOf[t.key]!
+          : 'Sui tuoi servizi',
+    ].join(' · '),
     title: t.title,
     meta: tmdbMeta(t),
     plot: t.overview,
@@ -443,12 +537,18 @@ class _HomeScreenState extends State<HomeScreen> {
       kicker: 'TV in diretta · ${c.number}',
       title: now?.title ?? c.name,
       meta: now == null
-          ? c.group
+          ? 'Canale ${c.number}'
           : '${c.name} · ${hhmm(now.start)} – ${hhmm(now.stop)}',
       plot: now?.description ?? '',
       note: now == null
-          ? 'Nessuna informazione'
+          ? 'Nessuna guida per questo canale'
           : '${formatDuration(now.stop.difference(_now))} rimanenti',
+      // I canali non hanno un backdrop: al suo posto il logo, grande.
+      art: ChannelLogo(
+        channel: c,
+        size: VistaSize.channelLogoPreview,
+        boxed: false,
+      ),
     );
   }
 
@@ -471,14 +571,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     final user = AppScope.of(context).user;
     final now = guide.nowOn(c, now: _now);
+    // Quanto del programma in onda è già passato: la barra dice "in onda"
+    // e a che punto è, senza un'etichetta in più.
+    final elapsed = now == null || now.duration.inSeconds <= 0
+        ? null
+        : _now.difference(now.start).inSeconds / now.duration.inSeconds;
     return VistaWideCard(
       title: now?.title ?? c.name,
       meta: now == null
-          ? '${c.number} · ${c.group}'
+          ? 'Canale ${c.number}'
           : '${c.name} · ${hhmm(now.start)} – ${hhmm(now.stop)}',
       restWidth: width,
-      center: ChannelLogo(channel: c, size: VistaSpace.s64),
-      overlay: now == null ? null : const VistaLabel('In onda', dot: true),
+      center: ChannelLogo(
+        channel: c,
+        size: VistaSize.channelLogoCard,
+        boxed: false,
+      ),
+      progress: elapsed,
       autofocus: autofocus,
       onFocusChange: _onFocus(() => _channelPreview(c, guide)),
       onTap: () => Nav.playChannel(context, list, c),
@@ -506,35 +615,40 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (item) {
       case Movie m:
         final key = UserKey.movie(m.id);
+        final t = _titles.movie(_tmdb, m);
         return VistaPosterCard(
-          title: m.title,
-          image: m.poster,
+          title: listTitle(m.title, t),
+          image: m.poster.isNotEmpty ? m.poster : (t?.poster ?? ''),
           restWidth: width,
           showText: showText,
           autofocus: autofocus,
           meta: metaLine([
-            if (m.year != null) '${m.year}',
-            if (m.rating.isNotEmpty) '${m.rating}/10',
+            if ((m.year ?? t?.year ?? yearInTitle(m.title)) case final y?) '$y',
+            _rating(m.rating, t),
           ]),
           progress: user.progressOf(key)?.fraction,
           saved: user.isFavorite(key),
           onFocusChange: _onFocus(() => _moviePreview(m)),
           onTap: () => Nav.openMovie(context, m),
-          onLongPress: () => toggleMyList(context, key, m.title),
+          onLongPress: () => toggleMyList(context, key, _movieTitle(m)),
         );
       case Series s:
         final key = UserKey.series(s.id);
+        final t = _titles.series(_tmdb, s);
         return VistaPosterCard(
-          title: s.title,
-          image: s.poster,
+          title: listTitle(s.title, t),
+          image: s.poster.isNotEmpty ? s.poster : (t?.poster ?? ''),
           restWidth: width,
           showText: showText,
           autofocus: autofocus,
-          meta: metaLine([if (s.year != null) '${s.year}', 'Serie']),
+          meta: metaLine([
+            if ((s.year ?? t?.year ?? yearInTitle(s.title)) case final y?) '$y',
+            'Serie',
+          ]),
           saved: user.isFavorite(key),
           onFocusChange: _onFocus(() => _seriesPreview(s)),
           onTap: () => Nav.openSeries(context, s),
-          onLongPress: () => toggleMyList(context, key, s.title),
+          onLongPress: () => toggleMyList(context, key, _seriesTitle(s)),
         );
       case SavedTitle t:
         // Titolo dei servizi di streaming: `tm:movie:603`.
@@ -587,7 +701,7 @@ class _HomeScreenState extends State<HomeScreen> {
         playLabel: 'Riproduci',
         onPlay: () => Nav.playMovie(context, m),
         saved: user.isFavorite(key),
-        onList: () => toggleMyList(context, key, m.title),
+        onList: () => toggleMyList(context, key, _movieTitle(m)),
       );
     }
     final s = _recentSeries.where((s) => s.poster.isNotEmpty).firstOrNull;
@@ -598,7 +712,7 @@ class _HomeScreenState extends State<HomeScreen> {
         playLabel: 'Episodi',
         onPlay: () => Nav.openSeries(context, s),
         saved: user.isFavorite(key),
-        onList: () => toggleMyList(context, key, s.title),
+        onList: () => toggleMyList(context, key, _seriesTitle(s)),
       );
     }
     return null;

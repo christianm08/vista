@@ -13,6 +13,7 @@ class VistaPreviewData {
     this.note = '',
     this.backdrop = '',
     this.poster = '',
+    this.art,
   });
 
   /// Identifica il contenuto (per le dissolvenze: stesso id, niente cambio).
@@ -34,6 +35,10 @@ class VistaPreviewData {
   /// Immagine orizzontale; se manca si usa [poster], intera a destra.
   final String backdrop;
   final String poster;
+
+  /// Al posto del backdrop quando non c'è un'immagine (il logo del canale):
+  /// grande, a destra, sfuma nel fondo con gli stessi veli.
+  final Widget? art;
 }
 
 /// La prima frase di una trama (l'anteprima ne mostra una sola).
@@ -63,57 +68,76 @@ class VistaBackdrop extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            AnimatedSwitcher(
-              duration: reduce
-                  ? VistaMotion.reducedFade
-                  : VistaMotion.backdropFade,
-              switchInCurve: VistaMotion.standard,
-              switchOutCurve: VistaMotion.standard,
-              layoutBuilder: (current, previous) => Stack(
-                fit: StackFit.expand,
-                children: [...previous, ?current],
-              ),
-              child: KeyedSubtree(
-                key: ValueKey(url),
-                child: d == null || url.isEmpty
-                    ? const SizedBox.expand()
-                    : d.backdrop.isNotEmpty
-                    ? NetImage(
-                        d.backdrop,
-                        cacheWidth: (c.maxWidth * dpr).round(),
-                        placeholder: const SizedBox.expand(),
-                        fallback: const SizedBox.expand(),
-                      )
-                    // Solo la locandina: intera, appoggiata a destra.
-                    : Align(
-                        alignment: Alignment.centerRight,
-                        child: AspectRatio(
-                          aspectRatio: 2 / 3,
-                          // Anche il bordo sinistro della locandina sfuma:
-                          // niente spigolo netto nel mezzo dello schermo.
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              NetImage(
-                                d.poster,
-                                cacheWidth: (c.maxHeight * 2 / 3 * dpr).round(),
-                                placeholder: const SizedBox.expand(),
-                                fallback: const SizedBox.expand(),
-                              ),
-                              const DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                    colors: VistaScrims.horizontalColors,
-                                    stops: VistaScrims.horizontalStops,
+            Positioned(
+              left: c.maxWidth * VistaScrims.imageStart,
+              top: 0,
+              right: 0,
+              bottom: 0,
+              child: AnimatedSwitcher(
+                duration: reduce
+                    ? VistaMotion.reducedFade
+                    : VistaMotion.backdropFade,
+                switchInCurve: VistaMotion.standard,
+                switchOutCurve: VistaMotion.standard,
+                layoutBuilder: (current, previous) => Stack(
+                  fit: StackFit.expand,
+                  children: [...previous, ?current],
+                ),
+                child: KeyedSubtree(
+                  key: ValueKey(d?.art != null ? 'art:${d!.id}' : url),
+                  child: d?.art != null
+                      ? Align(
+                          alignment: Alignment.centerRight,
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              right: VistaSpace.s64,
+                            ),
+                            child: d!.art,
+                          ),
+                        )
+                      : d == null || url.isEmpty
+                      ? const SizedBox.expand()
+                      : d.backdrop.isNotEmpty
+                      ? NetImage(
+                          d.backdrop,
+                          cacheWidth:
+                              (c.maxWidth * (1 - VistaScrims.imageStart) * dpr)
+                                  .round(),
+                          placeholder: const SizedBox.expand(),
+                          fallback: const SizedBox.expand(),
+                        )
+                      // Solo la locandina: intera, appoggiata a destra.
+                      : Align(
+                          alignment: Alignment.centerRight,
+                          child: AspectRatio(
+                            aspectRatio: 2 / 3,
+                            // Anche il bordo sinistro della locandina sfuma:
+                            // niente spigolo netto nel mezzo dello schermo.
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                NetImage(
+                                  d.poster,
+                                  cacheWidth: (c.maxHeight * 2 / 3 * dpr)
+                                      .round(),
+                                  placeholder: const SizedBox.expand(),
+                                  fallback: const SizedBox.expand(),
+                                ),
+                                const DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                      colors: VistaScrims.horizontalColors,
+                                      stops: VistaScrims.horizontalStops,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
+                ),
               ),
             ),
             const DecoratedBox(

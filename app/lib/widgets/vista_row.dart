@@ -8,18 +8,23 @@ import 'vista_focus.dart';
 /// Ritaglia solo ai lati: sopra e sotto l'elemento a fuoco (ingrandimento,
 /// anello, ombra) resta libero.
 class _SidesClipper extends CustomClipper<Rect> {
-  const _SidesClipper();
+  const _SidesClipper(this.left);
+
+  /// Bordo sinistro: dove finisce la card precedente quando quella a fuoco è
+  /// agganciata al margine. Di lei non si vede una striscia tagliata; la
+  /// card a fuoco, ingrandita, ci sta ancora dentro.
+  final double left;
 
   @override
   Rect getClip(Size size) => Rect.fromLTRB(
-    0,
+    left,
     -VistaSpace.s64,
     size.width,
     size.height + VistaSpace.s64,
   );
 
   @override
-  bool shouldReclip(_SidesClipper old) => false;
+  bool shouldReclip(_SidesClipper old) => old.left != left;
 }
 
 /// Ritaglia solo in alto: il bordo della zona delle righe sotto l'anteprima.
@@ -179,7 +184,7 @@ class _VistaRowState extends State<VistaRow> {
           child: SectionTitle(widget.title, trailing: widget.trailing),
         ),
         ClipRect(
-          clipper: const _SidesClipper(),
+          clipper: _SidesClipper(g - spacing),
           child: SizedBox(
             height: widget.itemHeight + reserve * 2,
             child: Focus(

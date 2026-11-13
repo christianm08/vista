@@ -74,16 +74,20 @@ abstract final class VistaColors {
 /// Veli del backdrop: sfumano l'artwork nel fondo. Il testo sta solo dove il
 /// velo copre almeno il 90%.
 abstract final class VistaScrims {
-  /// Da sinistra: pieno fino al 0%, 92% al 40%, trasparente dal 75%.
-  /// Il primo 4% è pieno: copre il bordo dell'immagine, che sennò lascia
-  /// una riga sottile.
+  /// Da sinistra: pieno fino al 30%, 92% al 40%, trasparente dal 75%.
+  /// Sotto la parte piena non c'è immagine (vedi [imageStart]).
   static const horizontalColors = [
     VistaColors.background,
     VistaColors.background,
     Color(0xEB0C0D0C),
     Color(0x000C0D0C),
   ];
-  static const horizontalStops = [0.0, 0.04, 0.4, 0.75];
+  static const horizontalStops = [0.0, imageStart, 0.4, 0.75];
+
+  /// Dove comincia l'immagine del backdrop (frazione della sua larghezza).
+  /// Prima c'è solo il fondo: sotto un velo quasi opaco, su Windows, il
+  /// motore di disegno lasciava passare una riga di 1 px dell'immagine.
+  static const imageStart = 0.3;
 
   /// Dal basso: pieno sul bordo inferiore, trasparente in alto.
   static const bottomColors = [VistaColors.background, Color(0x000C0D0C)];
@@ -196,6 +200,11 @@ abstract final class VistaSize {
 
   /// Marchio nella barra laterale.
   static const railMark = 40.0;
+
+  /// Logo del canale dentro la card 16:9 e, grande, nell'anteprima (i
+  /// canali non hanno un backdrop: al suo posto c'è il logo).
+  static const channelLogoCard = 72.0;
+  static const channelLogoPreview = 200.0;
 }
 
 /// Fuoco: scala, anello, ombra.

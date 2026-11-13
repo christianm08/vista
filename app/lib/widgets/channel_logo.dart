@@ -9,10 +9,19 @@ import '../theme.dart';
 /// `tvg-logo` della lista, infine le iniziali generate. Se un'immagine non si
 /// carica si passa alla successiva.
 class ChannelLogo extends StatelessWidget {
-  const ChannelLogo({super.key, required this.channel, this.size = 56});
+  const ChannelLogo({
+    super.key,
+    required this.channel,
+    this.size = 56,
+    this.boxed = true,
+  });
 
   final Channel channel;
   final double size;
+
+  /// Con un fondo suo; senza, il logo sta direttamente sulla superficie
+  /// (card dei canali, anteprima).
+  final bool boxed;
 
   static const _tones = [
     Color(0xFF1E6B73),
@@ -50,6 +59,9 @@ class ChannelLogo extends StatelessWidget {
       errorBuilder: (_, _, _) => i + 1 < urls.length ? image(i + 1) : mono,
     );
 
+    if (!boxed) {
+      return SizedBox.square(dimension: size, child: image(0));
+    }
     return ClipRRect(
       borderRadius: r,
       child: Container(
