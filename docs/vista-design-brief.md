@@ -189,7 +189,7 @@ Tela TV 1280×720 (come oggi). Su Windows e tablet valgono le stesse misure *wid
 | Card 16:9 | 256×144 | 220×124 | 300×169 su finestre ≥1600, come oggi. Gli episodi del dettaglio usano la stessa misura (la bozza dice 232: unificato) |
 | Poster 2:3 | 148×222 | 112×168 | 168×252 su finestre ≥1600 |
 | Elemento della barra laterale | 56×48 | — | la bozza dice 44; 48 per il tocco su tablet |
-| Barra laterale chiusa | margine + 56 + 16 (88 su PC e tablet, 136 su TV) | — | su TV le icone e il loro anello restano dentro l'area sicura |
+| Barra laterale chiusa | rientro + 56 + 16 (88 su PC e tablet, 144 su TV) | — | su TV il rientro è area sicura + 8, così anche l'anello (che sporge di 5) resta dentro |
 | Barra laterale aperta | 248, sopra il contenuto | — | il contenuto non si sposta |
 | Inizio del contenuto | barra + 32 | gutter 16 | la bozza dice 128 su PC: diventa 120 |
 | Barra in basso | — | 80 + area di sistema | |

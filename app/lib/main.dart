@@ -15,6 +15,7 @@ import 'data/tmdb_store.dart';
 import 'data/user_store.dart';
 import 'data/window_mode.dart';
 import 'player/platform_player.dart';
+import 'screens/gallery_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
@@ -215,9 +216,15 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
             },
             const SingleActivator(LogicalKeyboardKey.f11): WindowMode.toggle,
           },
-          child: TvCanvas(child: VistaBackground(child: child!)),
+          child: TvCanvas(
+            child: VistaThemeScope(child: VistaBackground(child: child!)),
+          ),
         ),
-        home: _Root(store: _store, onLoaded: _refreshStale),
+        // Galleria dei componenti, solo per le prove:
+        // --dart-define=VISTA_GALLERY=true
+        home: const bool.fromEnvironment('VISTA_GALLERY')
+            ? const GalleryScreen()
+            : _Root(store: _store, onLoaded: _refreshStale),
       ),
     );
   }
