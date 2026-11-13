@@ -15,6 +15,20 @@
 
 ---
 
+## Scaricare
+
+Ultima versione: **1.0.0**, nella pagina [Releases](https://github.com/christianm08/vista/releases).
+
+- **Windows**: scaricare `Vista-1.0.0-windows-x64.zip`, estrarlo in una cartella e avviare `vista.exe`.
+  L'app non è firmata: Windows SmartScreen può chiedere conferma al primo avvio.
+- **Android, Android TV e Google TV**: scaricare `Vista-1.0.0-android.apk` e installarlo
+  (bisogna consentire l'installazione da origini sconosciute).
+
+Le versioni pubblicate non contengono la chiave TMDB: per la sezione Scopri e la disponibilità
+sui servizi si inserisce la propria in Impostazioni › I miei servizi.
+
+---
+
 ## Cosa fa
 
 ### Fonti
@@ -79,7 +93,8 @@
 app/              App Flutter (Android, Android TV, Windows)
   lib/data/       Fonti, guida TV, dati utente, TMDB, PIN, backup, registrazioni, cache
   lib/screens/    Schermate (Home, TV in diretta, Film/Serie, Scopri, Player, Impostazioni…)
-  lib/player/     Menu del player, scelta del flusso, PiP e player esterno
+  lib/player/     Pezzi del player: barra, elenco canali, menu, scelta del flusso,
+                  numero del canale, registrazione, PiP e player esterno
   lib/widgets/    Componenti (guida a griglia, schede, marchio…)
   tool/           Generatore delle icone
 vista_resolver/   Pacchetto Dart puro: M3U, Xtream, XMLTV, TMDB, unione dei canali

@@ -39,6 +39,21 @@ void main() {
     // Nessuno abbastanza leggero: il più leggero che c'è.
     s.setQuality(RecordQuality.low);
     expect(s.pickStream(streams)?.url, 'hd');
-    expect(RecordQuality.medium.estimate(const Duration(hours: 2)), 'circa 3.2 GB');
+    expect(
+      RecordQuality.medium.estimate(const Duration(hours: 2)),
+      'circa 3.2 GB',
+    );
+  });
+
+  test('due registrazioni nello stesso minuto non si sovrascrivono', () {
+    final taken = {'Rete 4 - 1932', 'Rete 4 - 1932 (2)'};
+    expect(
+      RecordingService.uniqueBase('Rai 1 - 1932', taken.contains),
+      'Rai 1 - 1932',
+    );
+    expect(
+      RecordingService.uniqueBase('Rete 4 - 1932', taken.contains),
+      'Rete 4 - 1932 (3)',
+    );
   });
 }

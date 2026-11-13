@@ -510,7 +510,13 @@ class RecordingService extends ChangeNotifier {
     _instant.clear();
   }
 
-  /// Percorso del nuovo file, senza estensione.
+  /// Nomi già dati in questa sessione: il file nasce solo all'arrivo dei
+  /// primi dati, quindi due registrazioni partite insieme non si vedono.
+  final _usedBases = <String>{};
+
+  /// Percorso del nuovo file, senza estensione. Due registrazioni dello
+  /// stesso canale nello stesso minuto non si sovrascrivono: la seconda
+  /// prende " (2)", e così via.
   Future<String> _newBase(String channel, String title) async {
     final d = await folder();
     final t = DateTime.now();
@@ -522,7 +528,24 @@ class RecordingService extends ChangeNotifier {
       if (title.isNotEmpty) title,
       stamp,
     ].join(' - ').replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    return '${d.path}${Platform.pathSeparator}$clean';
+    final base = uniqueBase(
+      '${d.path}${Platform.pathSeparator}$clean',
+      (b) =>
+          _usedBases.contains(b) ||
+          File('$b.ts').existsSync() ||
+          File('$b.mp4').existsSync(),
+    );
+    _usedBases.add(base);
+    return base;
+  }
+
+  /// [base] se è libero, altrimenti "base (2)", "base (3)"…
+  static String uniqueBase(String base, bool Function(String base) taken) {
+    if (!taken(base)) return base;
+    for (var i = 2; ; i++) {
+      final b = '$base ($i)';
+      if (!taken(b)) return b;
+    }
   }
 
   /// Nome leggibile di un file di registrazione.
