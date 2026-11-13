@@ -7,40 +7,22 @@ import '../app_scope.dart';
 import '../data/user_store.dart';
 import '../theme.dart';
 import '../widgets/channel_logo.dart';
-import '../widgets/content_row.dart';
 import '../widgets/epg_guide.dart' show hhmm;
-import '../widgets/poster_card.dart';
 import '../widgets/tmdb_row.dart';
+import '../widgets/vista_cards.dart';
+import '../widgets/vista_controls.dart';
+import '../widgets/vista_mark.dart';
+import '../widgets/vista_preview.dart';
+import '../widgets/vista_row.dart';
 import 'shell.dart';
 
-/// Un titolo in evidenza nel riquadro grande della Home.
-class _Featured {
-  _Featured({
-    required this.title,
-    required this.image,
-    required this.backdrop,
-    required this.meta,
-    required this.plot,
-    required this.onPlay,
-    required this.onDetails,
-    this.playLabel = 'Riproduci',
-    this.progress,
-    this.kicker = '',
-  });
-  final String title;
-  final String image;
-  final String backdrop;
-  final String meta;
-  final String plot;
-  final String playLabel;
-  final double? progress;
-  final String kicker;
-  final VoidCallback onPlay;
-  final VoidCallback? onDetails;
-}
-
-/// Home in stile servizio di streaming: riquadro in evidenza e righe
-/// (continua a guardare, canali, la mia lista, novità, categorie).
+/// Home in stile servizio di streaming.
+///
+/// TV, PC, tablet: in alto l'anteprima del contenuto a fuoco (backdrop,
+/// titolo, metadati, una frase di trama), sotto le righe. Anteprima e
+/// backdrop cambiano quando il fuoco si ferma.
+///
+/// Telefono: un riquadro in evidenza con Riproduci e Lista, poi le righe.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -51,12 +33,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   DateTime _now = DateTime.now();
   late final Timer _clock;
-  Timer? _rotate;
 
-  /// Titolo in evidenza: cambia ogni 9 s ridisegnando solo il riquadro, non
-  /// tutta la Home.
-  final _heroIndex = ValueNotifier<int>(0);
-  bool _heroFocused = false;
+  /// Anteprima del contenuto dove il fuoco si è fermato.
+  final _preview = ValueNotifier<VistaPreviewData?>(null);
+  Timer? _settle;
 
   // Calcoli costosi sulle liste grandi, rifatti solo al cambio di catalogo.
   Catalog? _memoFor;
@@ -74,16 +54,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
-    _rotate = Timer.periodic(const Duration(seconds: 9), (_) {
-      if (mounted && !_heroFocused) _heroIndex.value++;
-    });
   }
 
   @override
   void dispose() {
     _clock.cancel();
-    _rotate?.cancel();
-    _heroIndex.dispose();
+    _settle?.cancel();
+    _preview.dispose();
     super.dispose();
   }
 
@@ -124,13 +101,17 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
-  String get _greeting {
-    final h = _now.hour;
-    if (h < 5) return 'Buonanotte';
-    if (h < 13) return 'Buongiorno';
-    if (h < 18) return 'Buon pomeriggio';
-    return 'Buonasera';
+  /// Il fuoco arriva su un contenuto: l'anteprima lo segue quando si ferma.
+  void _focus(VistaPreviewData d) {
+    _settle?.cancel();
+    _settle = Timer(VistaMotion.backdropDelay, () {
+      if (mounted) _preview.value = d;
+    });
   }
+
+  ValueChanged<bool> _onFocus(VistaPreviewData Function() d) => (has) {
+    if (has) _focus(d());
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final guide = app.epg.guide.value;
     final channels = _channels;
     final byKey = _channelsByKey;
+    final compact = layout.compact;
 
     final favChannels = [
       for (final c in channels)
@@ -186,51 +168,109 @@ class _HomeScreenState extends State<HomeScreen> {
       if (guide.nowOn(c, now: _now) != null) onAir.add(c);
     }
 
-    final featured = _featured(context, catalog, resume);
-
     final pw = layout.posterWidth;
-    final posterH = pw * 1.5 + PosterCard.textHeight;
+    // Su TV e PC il titolo lo dice già l'anteprima: locandine senza testo.
+    final posterText = compact;
+    final posterH = VistaPosterCard.heightFor(context, pw, posterText);
     final ww = layout.wideCardWidth;
-    final wideH = ww * 9 / 16 + WideCard.textHeight;
+    final wideH = VistaWideCard.heightFor(context, ww);
 
-    Widget channelRow(String title, List<Channel> list) => ContentRow(
-      title: title,
-      itemCount: list.length,
-      itemWidth: ww,
-      itemHeight: wideH,
-      itemBuilder: (context, i) => _channelCard(context, list, list[i], guide),
-    );
+    // All'apertura ha il fuoco il primo elemento della prima riga.
+    var first = !compact;
+    bool takeFirst() {
+      final f = first;
+      first = false;
+      return f;
+    }
+
+    Widget posterRow(String key, String title, List<Object> items) {
+      final autofocus = takeFirst();
+      return VistaRow(
+        key: ValueKey(key),
+        title: title,
+        itemCount: items.length,
+        itemKey: (i) => ValueKey(_keyOf(items[i])),
+        itemWidth: pw,
+        itemHeight: posterH,
+        itemBuilder: (context, i) => _poster(
+          context,
+          items[i],
+          user,
+          width: pw,
+          showText: posterText,
+          autofocus: autofocus && i == 0,
+        ),
+      );
+    }
+
+    Widget channelRow(String key, String title, List<Channel> list) {
+      final autofocus = takeFirst();
+      return VistaRow(
+        key: ValueKey(key),
+        title: title,
+        itemCount: list.length,
+        itemKey: (i) => ValueKey('ch:${list[i].key}'),
+        itemWidth: ww,
+        itemHeight: wideH,
+        itemBuilder: (context, i) => _channelCard(
+          context,
+          list,
+          list[i],
+          guide,
+          width: ww,
+          autofocus: autofocus && i == 0,
+        ),
+      );
+    }
+
+    Widget resumeRow() {
+      final autofocus = takeFirst();
+      return VistaRow(
+        key: const ValueKey('resume'),
+        title: 'Continua a guardare',
+        itemCount: resume.length,
+        itemKey: (i) => ValueKey('pr:${resume[i].key}'),
+        itemWidth: ww,
+        itemHeight: wideH,
+        itemBuilder: (context, i) {
+          final p = resume[i];
+          return VistaWideCard(
+            title: p.title,
+            meta: [
+              if (p.subtitle.isNotEmpty) p.subtitle,
+              'mancano ${formatDuration(p.duration - p.position)}',
+            ].join(' · '),
+            image: p.image,
+            restWidth: ww,
+            progress: p.fraction,
+            autofocus: autofocus && i == 0,
+            onFocusChange: _onFocus(() => _resumePreview(p)),
+            onTap: () => Nav.resume(context, p),
+            onLongPress: () {
+              user.clearProgress(p.key);
+              showToast(context, 'Tolto da Continua a guardare');
+            },
+          );
+        },
+      );
+    }
 
     final rows = <Widget>[
-      if (resume.isNotEmpty)
-        ContentRow(
-          title: 'Continua a guardare',
-          itemCount: resume.length,
-          itemWidth: ww,
-          itemHeight: wideH,
-          itemBuilder: (context, i) {
-            final p = resume[i];
-            final left = p.duration - p.position;
-            return WideCard(
-              title: p.title,
-              subtitle: [
-                if (p.subtitle.isNotEmpty) p.subtitle,
-                'mancano ${formatDuration(left)}',
-              ].join(' · '),
-              image: p.image,
-              progress: p.fraction,
-              onTap: () => Nav.resume(context, p),
-              onLongPress: () {
-                user.clearProgress(p.key);
-                showToast(context, 'Tolto da Continua a guardare');
-              },
-            );
-          },
+      if (resume.isNotEmpty) resumeRow(),
+      if (_recentMovies.isNotEmpty)
+        posterRow('recent-movies', 'Film aggiunti di recente', _recentMovies),
+      if (_recentSeries.isNotEmpty)
+        posterRow(
+          'recent-series',
+          'Serie aggiornate di recente',
+          _recentSeries,
         ),
       if (app.tmdb.ready && user.services.isNotEmpty)
-        TmdbRow(
+        TmdbVistaRow(
           key: ValueKey('home-svc-${user.services.join(',')}'),
           title: 'Popolari sui tuoi servizi',
+          showText: posterText,
+          onFocusTitle: (t) => _focus(_tmdbPreview(t)),
           load: () async {
             final ids = withVariants(
               user.services,
@@ -247,446 +287,200 @@ class _HomeScreenState extends State<HomeScreen> {
           },
           onSeeAll: () => ShellController.of(context).go(Destination.discover),
         ),
-      if (favChannels.isNotEmpty) channelRow('Canali preferiti', favChannels),
-      if (recent.isNotEmpty) channelRow('Visti di recente', recent),
-      if (onAir.isNotEmpty) channelRow('In onda ora', onAir),
-      if (myList.isNotEmpty)
-        ContentRow(
-          title: 'La mia lista',
-          itemCount: myList.length,
-          itemWidth: pw,
-          itemHeight: posterH,
-          itemBuilder: (context, i) => _poster(context, myList[i], user),
-        ),
-      if (_recentMovies.isNotEmpty)
-        ContentRow(
-          title: 'Film aggiunti di recente',
-          itemCount: _recentMovies.length,
-          itemWidth: pw,
-          itemHeight: posterH,
-          itemBuilder: (context, i) => _poster(context, _recentMovies[i], user),
-        ),
-      if (_recentSeries.isNotEmpty)
-        ContentRow(
-          title: 'Serie aggiornate di recente',
-          itemCount: _recentSeries.length,
-          itemWidth: pw,
-          itemHeight: posterH,
-          itemBuilder: (context, i) => _poster(context, _recentSeries[i], user),
-        ),
+      if (myList.isNotEmpty) posterRow('my-list', 'La mia lista', myList),
+      if (favChannels.isNotEmpty)
+        channelRow('fav-channels', 'Canali preferiti', favChannels),
+      if (recent.isNotEmpty)
+        channelRow('recent-channels', 'Visti di recente', recent),
+      if (onAir.isNotEmpty) channelRow('on-air', 'In onda ora', onAir),
       for (final (group, movies) in _movieGroups)
-        ContentRow(
-          title: group,
-          itemCount: movies.length,
-          itemWidth: pw,
-          itemHeight: posterH,
-          itemBuilder: (context, i) => _poster(context, movies[i], user),
-        ),
+        posterRow('group-$group', group, movies),
       if (onAir.isEmpty && favChannels.isEmpty && channels.isNotEmpty)
-        channelRow('Canali', channels.take(20).toList()),
+        channelRow('channels', 'Canali', channels.take(20).toList()),
     ];
 
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(child: _header(context, layout)),
-        if (featured.isNotEmpty)
-          SliverToBoxAdapter(
-            child: ValueListenableBuilder<int>(
-              valueListenable: _heroIndex,
-              builder: (context, i, _) => _heroCard(
-                context,
-                layout,
-                featured[i % featured.length],
-                featured.length,
-                i % featured.length,
-              ),
-            ),
-          ),
-        if (rows.isEmpty && featured.isEmpty)
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: EmptyState(
-              icon: Icons.inbox_outlined,
-              title: 'Ancora niente da mostrare',
-              message: 'Apri TV in diretta, Film o Serie per iniziare.',
-            ),
-          ),
-        SliverList.list(children: rows),
-        SliverToBoxAdapter(child: SizedBox(height: layout.compact ? 110 : 32)),
-      ],
-    );
-  }
+    if (rows.isEmpty) {
+      return const EmptyState(
+        icon: Icons.inbox_outlined,
+        title: 'Ancora niente da mostrare',
+        message: 'Apri TV in diretta, Film o Serie per iniziare.',
+      );
+    }
 
-  Widget _header(BuildContext context, VistaLayout layout) {
-    final t = Theme.of(context).textTheme;
-    final g = layout.gutter;
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          g,
-          layout.compact ? 8 : 22,
-          layout.compact ? 6 : g,
-          14,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _greeting,
-                    style: t.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      height: 1.1,
-                    ),
-                  ),
-                  Text(
-                    'Cosa guardiamo?',
-                    style: t.bodyMedium?.copyWith(
-                      color: VistaColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
+    // Prima anteprima: il primo contenuto, finché il fuoco non si sposta.
+    _preview.value ??= resume.isNotEmpty
+        ? _resumePreview(resume.first)
+        : _recentMovies.isNotEmpty
+        ? _moviePreview(_recentMovies.first)
+        : _recentSeries.isNotEmpty
+        ? _seriesPreview(_recentSeries.first)
+        : null;
+
+    if (compact) {
+      return VistaRowsPage(
+        rows: [
+          _PhoneHero(
+            key: const ValueKey('hero'),
+            feature: _phoneFeature(context, resume, user),
+          ),
+          ...rows,
+        ],
+      );
+    }
+
+    final headerTop = layout.safe.top > VistaSpace.s64
+        ? layout.safe.top
+        : VistaSpace.s64;
+    return LayoutBuilder(
+      builder: (context, c) => Stack(
+        children: [
+          Positioned(
+            top: 0,
+            right: 0,
+            width: c.maxWidth * VistaSize.backdropWidth,
+            height: c.maxHeight * VistaSize.backdropHeight,
+            child: ValueListenableBuilder(
+              valueListenable: _preview,
+              builder: (_, d, _) => VistaBackdrop(data: d),
             ),
-            if (layout.compact)
-              IconButton(
-                tooltip: 'Impostazioni',
-                onPressed: () =>
-                    ShellController.of(context).go(Destination.settings),
-                icon: const Icon(Icons.settings_outlined),
-              )
-            else
-              VistaClock(
-                style: t.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: VistaColors.textSecondary,
+          ),
+          Positioned.fill(
+            child: VistaRowsPage(
+              headerHeight: headerTop + VistaSize.homePreview,
+              header: Padding(
+                padding: EdgeInsets.fromLTRB(layout.gutter, headerTop, 0, 0),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: ValueListenableBuilder(
+                    valueListenable: _preview,
+                    builder: (_, d, _) => VistaPreviewText(data: d),
+                  ),
                 ),
               ),
-          ],
-        ),
+              rows: rows,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // --- riquadro in evidenza ------------------------------------------------------
+  // --- anteprime -------------------------------------------------------------
 
-  List<_Featured> _featured(
-    BuildContext context,
-    Catalog c,
-    List<WatchProgress> resume,
-  ) {
-    final out = <_Featured>[];
-    if (resume.isNotEmpty) {
-      final p = resume.first;
-      out.add(
-        _Featured(
-          kicker: 'CONTINUA A GUARDARE',
-          title: p.title,
-          image: p.image,
-          backdrop: p.image,
-          meta: [
-            if (p.subtitle.isNotEmpty) p.subtitle,
-            'mancano ${formatDuration(p.duration - p.position)}',
-          ].join('  ·  '),
-          plot: '',
-          playLabel: 'Riprendi',
-          progress: p.fraction,
-          onPlay: () => Nav.resume(context, p),
-          onDetails: null,
-        ),
-      );
-    }
-    for (final m in _recentMovies.where((m) => m.poster.isNotEmpty).take(3)) {
-      out.add(
-        _Featured(
-          kicker: 'NOVITÀ',
-          title: m.title,
-          image: m.poster,
-          backdrop: m.poster,
-          meta: metaLine([
-            if (m.year != null) '${m.year}',
-            m.genre.isNotEmpty ? m.genre : m.group,
-            if (m.rating.isNotEmpty) '★ ${m.rating}',
-          ]),
-          plot: m.plot,
-          onPlay: () => Nav.playMovie(context, m),
-          onDetails: () => Nav.openMovie(context, m),
-        ),
-      );
-    }
-    for (final s in _recentSeries.where((s) => s.poster.isNotEmpty).take(2)) {
-      out.add(
-        _Featured(
-          kicker: 'SERIE TV',
-          title: s.title,
-          image: s.poster,
-          backdrop: s.backdrop.isNotEmpty ? s.backdrop : s.poster,
-          meta: metaLine([
-            if (s.year != null) '${s.year}',
-            s.genre.isNotEmpty ? s.genre : s.group,
-            if (s.rating.isNotEmpty) '★ ${s.rating}',
-          ]),
-          plot: s.plot,
-          playLabel: 'Episodi',
-          onPlay: () => Nav.openSeries(context, s),
-          onDetails: null,
-        ),
-      );
-    }
-    return out;
-  }
-
-  Widget _heroCard(
-    BuildContext context,
-    VistaLayout layout,
-    _Featured f,
-    int count,
-    int index,
-  ) {
-    final t = Theme.of(context).textTheme;
-    final g = layout.gutter;
-    final height = layout.compact
-        ? 230.0
-        : (layout.height * 0.42).clamp(220.0, 420.0);
-    final usesPoster = f.backdrop == f.image;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(g, 0, g, 24),
-      child: Focus(
-        canRequestFocus: false,
-        skipTraversal: true,
-        onFocusChange: (v) => _heroFocused = v,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(VistaRadius.hero),
-          child: SizedBox(
-            height: height,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Sfondo: immagine orizzontale, oppure la locandina sfocata.
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 500),
-                  child: KeyedSubtree(
-                    key: ValueKey(f.title),
-                    child: usesPoster
-                        ? NetImage(
-                            f.backdrop,
-                            soft: true,
-                            placeholder: TitlePlaceholder(
-                              f.title,
-                              showText: false,
-                            ),
-                          )
-                        : NetImage(
-                            f.backdrop,
-                            cacheWidth: 1280,
-                            placeholder: TitlePlaceholder(
-                              f.title,
-                              showText: false,
-                            ),
-                          ),
-                  ),
-                ),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        Color(0xF0080A0E),
-                        Color(0xB3080A0E),
-                        Color(0x33080A0E),
-                      ],
-                      stops: [0, 0.45, 1],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.all(layout.compact ? 18 : 30),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (f.kicker.isNotEmpty)
-                              Text(
-                                f.kicker,
-                                style: t.labelSmall?.copyWith(
-                                  color: VistaColors.accent,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.4,
-                                ),
-                              ),
-                            const SizedBox(height: 6),
-                            Text(
-                              f.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style:
-                                  (layout.compact
-                                          ? t.headlineSmall
-                                          : t.headlineMedium)
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        height: 1.1,
-                                      ),
-                            ),
-                            if (f.meta.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                f.meta,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: t.bodyMedium?.copyWith(
-                                  color: VistaColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                            if (f.plot.isNotEmpty && !layout.compact) ...[
-                              const SizedBox(height: 10),
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 560,
-                                ),
-                                child: Text(
-                                  f.plot,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: t.bodyMedium?.copyWith(
-                                    color: VistaColors.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            if (f.progress != null) ...[
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: 220,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: ProgressStrip(f.progress!),
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 16),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 8,
-                              children: [
-                                FilledButton.icon(
-                                  autofocus: true,
-                                  onPressed: f.onPlay,
-                                  icon: const Icon(Icons.play_arrow_rounded),
-                                  label: Text(f.playLabel),
-                                ),
-                                if (f.onDetails != null)
-                                  OutlinedButton.icon(
-                                    onPressed: f.onDetails,
-                                    icon: const Icon(
-                                      Icons.info_outline_rounded,
-                                    ),
-                                    label: const Text('Dettagli'),
-                                  ),
-                                if (count > 1)
-                                  OutlinedButton(
-                                    onPressed: () => _heroIndex.value++,
-                                    child: const Icon(
-                                      Icons.chevron_right_rounded,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (usesPoster &&
-                          !layout.compact &&
-                          f.image.isNotEmpty) ...[
-                        const SizedBox(width: 24),
-                        AspectRatio(
-                          aspectRatio: 2 / 3,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(
-                              VistaRadius.poster,
-                            ),
-                            child: NetImage(
-                              f.image,
-                              cacheWidth: 400,
-                              placeholder: TitlePlaceholder(f.title),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (count > 1)
-                  Positioned(
-                    right: 18,
-                    bottom: 14,
-                    child: Row(
-                      children: [
-                        for (var i = 0; i < count; i++)
-                          Container(
-                            width: i == index ? 18 : 6,
-                            height: 6,
-                            margin: const EdgeInsets.only(left: 5),
-                            decoration: BoxDecoration(
-                              color: i == index
-                                  ? Colors.white
-                                  : VistaColors.glassActive,
-                              borderRadius: BorderRadius.circular(99),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
+  VistaPreviewData _resumePreview(WatchProgress p) {
+    final series = p.seriesId == null ? null : _seriesById[p.seriesId];
+    return VistaPreviewData(
+      id: 'pr:${p.key}',
+      kicker: series != null
+          ? 'Serie · Continua a guardare'
+          : 'Continua a guardare',
+      title: series?.title ?? p.title,
+      meta: p.subtitle.isNotEmpty
+          ? p.subtitle
+          : (series == null ? '' : _seriesMeta(series)),
+      plot: series?.plot ?? '',
+      note: '${formatDuration(p.duration - p.position)} rimanenti',
+      backdrop: series?.backdrop ?? '',
+      poster: series?.poster ?? p.image,
     );
   }
 
-  // --- schede ----------------------------------------------------------------------
+  VistaPreviewData _moviePreview(Movie m) => VistaPreviewData(
+    id: 'mv:${m.id}',
+    kicker: 'Film · IPTV',
+    title: m.title,
+    meta: metaLine([
+      if (m.year != null) '${m.year}',
+      m.genre.isNotEmpty ? m.genre : m.group,
+      if (m.rating.isNotEmpty) '${m.rating}/10',
+    ]),
+    plot: m.plot,
+    poster: m.poster,
+  );
+
+  String _seriesMeta(Series s) => metaLine([
+    if (s.year != null) '${s.year}',
+    s.genre.isNotEmpty ? s.genre : s.group,
+    if (s.rating.isNotEmpty) '${s.rating}/10',
+  ]);
+
+  VistaPreviewData _seriesPreview(Series s) => VistaPreviewData(
+    id: 'sr:${s.id}',
+    kicker: 'Serie · IPTV',
+    title: s.title,
+    meta: _seriesMeta(s),
+    plot: s.plot,
+    backdrop: s.backdrop,
+    poster: s.poster,
+  );
+
+  VistaPreviewData _tmdbPreview(TmdbTitle t) => VistaPreviewData(
+    id: t.key,
+    kicker: t.type == MediaType.tv
+        ? 'Serie · Sui tuoi servizi'
+        : 'Film · Sui tuoi servizi',
+    title: t.title,
+    meta: tmdbMeta(t),
+    plot: t.overview,
+    backdrop: t.backdrop,
+    poster: t.poster,
+  );
+
+  VistaPreviewData _savedPreview(SavedTitle t) => VistaPreviewData(
+    id: t.key,
+    kicker: t.key.startsWith('tm:tv:')
+        ? 'Serie · La mia lista'
+        : 'Film · La mia lista',
+    title: t.title,
+    meta: t.year == null ? '' : '${t.year}',
+    poster: t.poster,
+  );
+
+  VistaPreviewData _channelPreview(Channel c, EpgGuide guide) {
+    final now = guide.nowOn(c, now: _now);
+    return VistaPreviewData(
+      id: 'ch:${c.key}',
+      kicker: 'TV in diretta · ${c.number}',
+      title: now?.title ?? c.name,
+      meta: now == null
+          ? c.group
+          : '${c.name} · ${hhmm(now.start)} – ${hhmm(now.stop)}',
+      plot: now?.description ?? '',
+      note: now == null
+          ? 'Nessuna informazione'
+          : '${formatDuration(now.stop.difference(_now))} rimanenti',
+    );
+  }
+
+  // --- schede ------------------------------------------------------------------
+
+  static String _keyOf(Object item) => switch (item) {
+    Movie m => UserKey.movie(m.id),
+    Series s => UserKey.series(s.id),
+    SavedTitle t => t.key,
+    _ => '$item',
+  };
 
   Widget _channelCard(
     BuildContext context,
     List<Channel> list,
     Channel c,
-    EpgGuide guide,
-  ) {
+    EpgGuide guide, {
+    required double width,
+    bool autofocus = false,
+  }) {
     final user = AppScope.of(context).user;
     final now = guide.nowOn(c, now: _now);
-    return WideCard(
+    return VistaWideCard(
       title: now?.title ?? c.name,
-      subtitle: now == null
+      meta: now == null
           ? '${c.number} · ${c.group}'
-          : '${c.name} · ${hhmm(now.start)}–${hhmm(now.stop)}',
-      center: ChannelLogo(channel: c, size: 64),
-      progress: now?.progressAt(_now),
-      overlay: Positioned(
-        top: 8,
-        left: 8,
-        child: Row(
-          children: [
-            const LiveBadge(),
-            if (user.isFavorite(UserKey.channel(c.key))) ...[
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.star_rounded,
-                size: 16,
-                color: VistaColors.accent,
-              ),
-            ],
-          ],
-        ),
-      ),
+          : '${c.name} · ${hhmm(now.start)} – ${hhmm(now.stop)}',
+      restWidth: width,
+      center: ChannelLogo(channel: c, size: VistaSpace.s64),
+      overlay: now == null ? null : const VistaLabel('In onda', dot: true),
+      autofocus: autofocus,
+      onFocusChange: _onFocus(() => _channelPreview(c, guide)),
       onTap: () => Nav.playChannel(context, list, c),
       onLongPress: () {
         final key = UserKey.channel(c.key);
@@ -701,29 +495,44 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _poster(BuildContext context, Object item, UserStore user) {
+  Widget _poster(
+    BuildContext context,
+    Object item,
+    UserStore user, {
+    required double width,
+    required bool showText,
+    bool autofocus = false,
+  }) {
     switch (item) {
       case Movie m:
         final key = UserKey.movie(m.id);
-        return PosterCard(
+        return VistaPosterCard(
           title: m.title,
           image: m.poster,
-          caption: metaLine([
+          restWidth: width,
+          showText: showText,
+          autofocus: autofocus,
+          meta: metaLine([
             if (m.year != null) '${m.year}',
-            if (m.rating.isNotEmpty) '★ ${m.rating}',
+            if (m.rating.isNotEmpty) '${m.rating}/10',
           ]),
           progress: user.progressOf(key)?.fraction,
-          favorite: user.isFavorite(key),
+          saved: user.isFavorite(key),
+          onFocusChange: _onFocus(() => _moviePreview(m)),
           onTap: () => Nav.openMovie(context, m),
           onLongPress: () => toggleMyList(context, key, m.title),
         );
       case Series s:
         final key = UserKey.series(s.id);
-        return PosterCard(
+        return VistaPosterCard(
           title: s.title,
           image: s.poster,
-          caption: metaLine([if (s.year != null) '${s.year}', 'Serie']),
-          favorite: user.isFavorite(key),
+          restWidth: width,
+          showText: showText,
+          autofocus: autofocus,
+          meta: metaLine([if (s.year != null) '${s.year}', 'Serie']),
+          saved: user.isFavorite(key),
+          onFocusChange: _onFocus(() => _seriesPreview(s)),
           onTap: () => Nav.openSeries(context, s),
           onLongPress: () => toggleMyList(context, key, s.title),
         );
@@ -735,19 +544,216 @@ class _HomeScreenState extends State<HomeScreen> {
           id: int.tryParse(parts[2]) ?? 0,
           title: t.title,
         );
-        return PosterCard(
+        return VistaPosterCard(
           title: t.title,
           image: t.poster,
-          caption: metaLine([
+          restWidth: width,
+          showText: showText,
+          autofocus: autofocus,
+          meta: metaLine([
             if (t.year != null) '${t.year}',
             parts[1] == 'tv' ? 'Serie' : 'Film',
           ]),
-          favorite: true,
+          saved: true,
+          onFocusChange: _onFocus(() => _savedPreview(t)),
           onTap: () => Nav.openTmdb(context, tmdb),
           onLongPress: () => toggleSavedTitle(context, tmdb),
         );
     }
     return const SizedBox.shrink();
+  }
+
+  // --- telefono ------------------------------------------------------------------
+
+  /// Il contenuto in evidenza sul telefono: da riprendere, o il più recente.
+  _PhoneFeature? _phoneFeature(
+    BuildContext context,
+    List<WatchProgress> resume,
+    UserStore user,
+  ) {
+    if (resume.isNotEmpty) {
+      final p = resume.first;
+      return _PhoneFeature(
+        preview: _resumePreview(p),
+        playLabel: 'Riprendi',
+        onPlay: () => Nav.resume(context, p),
+      );
+    }
+    final m = _recentMovies.where((m) => m.poster.isNotEmpty).firstOrNull;
+    if (m != null) {
+      final key = UserKey.movie(m.id);
+      return _PhoneFeature(
+        preview: _moviePreview(m),
+        playLabel: 'Riproduci',
+        onPlay: () => Nav.playMovie(context, m),
+        saved: user.isFavorite(key),
+        onList: () => toggleMyList(context, key, m.title),
+      );
+    }
+    final s = _recentSeries.where((s) => s.poster.isNotEmpty).firstOrNull;
+    if (s != null) {
+      final key = UserKey.series(s.id);
+      return _PhoneFeature(
+        preview: _seriesPreview(s),
+        playLabel: 'Episodi',
+        onPlay: () => Nav.openSeries(context, s),
+        saved: user.isFavorite(key),
+        onList: () => toggleMyList(context, key, s.title),
+      );
+    }
+    return null;
+  }
+}
+
+class _PhoneFeature {
+  const _PhoneFeature({
+    required this.preview,
+    required this.playLabel,
+    required this.onPlay,
+    this.saved = false,
+    this.onList,
+  });
+
+  final VistaPreviewData preview;
+  final String playLabel;
+  final VoidCallback onPlay;
+  final bool saved;
+  final VoidCallback? onList;
+}
+
+/// Riquadro in evidenza del telefono: artwork a tutta larghezza (anche sotto
+/// la barra di stato), intestazione con Cerca e Impostazioni, titolo e azioni.
+class _PhoneHero extends StatelessWidget {
+  const _PhoneHero({super.key, required this.feature});
+  final _PhoneFeature? feature;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final top = MediaQuery.paddingOf(context).top;
+    final f = feature;
+    final d = f?.preview;
+    final art = d == null
+        ? ''
+        : (d.backdrop.isNotEmpty ? d.backdrop : d.poster);
+    final shell = ShellController.of(context);
+    final g = VistaLayout.of(context).gutter;
+    final header = Row(
+      children: [
+        const VistaMark(size: VistaSize.railMark),
+        const Spacer(),
+        VistaIconButton(
+          icon: Icons.search_rounded,
+          tooltip: 'Cerca',
+          onPressed: () => shell.go(Destination.search),
+        ),
+        const SizedBox(width: VistaSpace.s8),
+        VistaIconButton(
+          icon: Icons.settings_rounded,
+          tooltip: 'Impostazioni',
+          onPressed: () => shell.go(Destination.settings),
+        ),
+      ],
+    );
+    if (f == null || d == null) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(g, top + VistaSpace.s8, g, 0),
+        child: header,
+      );
+    }
+    return SizedBox(
+      height: VistaSize.phoneHero + top,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (art.isNotEmpty)
+            LayoutBuilder(
+              builder: (context, c) => NetImage(
+                art,
+                alignment: Alignment.topCenter,
+                cacheWidth:
+                    (c.maxWidth * MediaQuery.devicePixelRatioOf(context))
+                        .round(),
+                placeholder: const SizedBox.expand(),
+                fallback: const SizedBox.expand(),
+              ),
+            ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: VistaScrims.heroColors,
+                stops: VistaScrims.heroStops,
+              ),
+            ),
+          ),
+          Positioned(
+            left: g,
+            right: g,
+            top: top + VistaSpace.s8,
+            child: header,
+          ),
+          Positioned(
+            left: g,
+            right: g,
+            bottom: VistaSpace.s16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (d.kicker.isNotEmpty)
+                  Text(
+                    d.kicker.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodySmall?.copyWith(
+                      letterSpacing: VistaType.capsTracking,
+                    ),
+                  ),
+                const SizedBox(height: VistaSpace.s8),
+                Text(
+                  d.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.displayMedium,
+                ),
+                if (d.meta.isNotEmpty || d.note.isNotEmpty) ...[
+                  const SizedBox(height: VistaSpace.s8),
+                  Text(
+                    metaLine([d.meta, d.note]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodySmall,
+                  ),
+                ],
+                const SizedBox(height: VistaSpace.s16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: VistaButton.primary(
+                        label: f.playLabel,
+                        icon: Icons.play_arrow_rounded,
+                        onPressed: f.onPlay,
+                      ),
+                    ),
+                    if (f.onList != null) ...[
+                      const SizedBox(width: VistaSpace.s12),
+                      VistaButton.tonal(
+                        label: 'Lista',
+                        icon: f.saved
+                            ? Icons.bookmark_rounded
+                            : Icons.bookmark_add_rounded,
+                        onPressed: f.onList,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

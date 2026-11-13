@@ -92,8 +92,9 @@ class VistaLayout {
   /// Barra laterale chiusa.
   double get railWidth => railInset + VistaSize.railItemWidth + VistaSpace.s16;
 
-  /// Dove inizia il contenuto accanto alla barra laterale chiusa.
-  double get contentLeft => railWidth + VistaSpace.s32;
+  /// Dove inizia l'area dei contenuti accanto alla barra laterale chiusa
+  /// (testo e card stanno più in là, di [gutter]).
+  double get contentLeft => railWidth;
 
   double get buttonHeight =>
       compact ? VistaSize.buttonCompact : VistaSize.button;
@@ -214,6 +215,7 @@ class NetImage extends StatelessWidget {
     this.url, {
     super.key,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.cacheWidth,
     this.placeholder,
     this.fallback,
@@ -223,6 +225,7 @@ class NetImage extends StatelessWidget {
 
   final String url;
   final BoxFit fit;
+  final Alignment alignment;
   final int? cacheWidth;
   final Widget? placeholder;
   final Widget? fallback;
@@ -244,6 +247,7 @@ class NetImage extends StatelessWidget {
         CachedNetImage(url),
       ),
       fit: fit,
+      alignment: alignment,
       gaplessPlayback: true,
       filterQuality: soft ? FilterQuality.medium : FilterQuality.low,
       opacity: opacity == 1 ? null : AlwaysStoppedAnimation(opacity),

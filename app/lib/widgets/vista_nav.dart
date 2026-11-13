@@ -40,9 +40,13 @@ class VistaRail extends StatefulWidget {
     this.focusNodes,
     this.open,
     this.onOpenChanged,
+    this.caption = '',
   });
 
   final List<VistaNavItem> items;
+
+  /// Riga piccola sotto l'ultima voce, visibile a barra aperta (es. la lista).
+  final String caption;
 
   /// Voce in fondo (Impostazioni); il suo indice è `items.length`.
   final VistaNavItem? footer;
@@ -180,6 +184,23 @@ class _VistaRailState extends State<VistaRail>
                       ],
                       const Spacer(),
                       if (widget.footer != null) item(widget.items.length),
+                      if (widget.caption.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: VistaSpace.s16,
+                            top: VistaSpace.s8,
+                          ),
+                          child: FadeTransition(
+                            opacity: _curve,
+                            child: Text(
+                              widget.caption,
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.fade,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -279,6 +300,9 @@ class _PillPainter extends CustomPainter {
 }
 
 /// Barra in basso del telefono: [NavigationBar] M3 ritematizzata.
+///
+/// [selected] null: la sezione aperta non è nella barra (Cerca,
+/// Impostazioni), quindi nessuna voce è evidenziata.
 class VistaNavBar extends StatelessWidget {
   const VistaNavBar({
     super.key,
@@ -288,18 +312,33 @@ class VistaNavBar extends StatelessWidget {
   });
 
   final List<VistaNavItem> items;
-  final int selected;
+  final int? selected;
   final ValueChanged<int> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    return NavigationBar(
-      selectedIndex: selected,
+    final bar = NavigationBar(
+      selectedIndex: selected ?? 0,
       onDestinationSelected: onSelect,
       destinations: [
         for (final i in items)
           NavigationDestination(icon: Icon(i.icon), label: i.label),
       ],
+    );
+    if (selected != null) return bar;
+    final theme = NavigationBarTheme.of(context);
+    final t = Theme.of(context).textTheme;
+    return NavigationBarTheme(
+      data: theme.copyWith(
+        indicatorColor: VistaColors.transparent,
+        iconTheme: const WidgetStatePropertyAll(
+          IconThemeData(size: VistaSize.icon, color: VistaColors.textSecondary),
+        ),
+        labelTextStyle: WidgetStatePropertyAll(
+          t.labelSmall?.copyWith(color: VistaColors.textSecondary),
+        ),
+      ),
+      child: bar,
     );
   }
 }

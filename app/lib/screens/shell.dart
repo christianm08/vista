@@ -6,7 +6,7 @@ import '../app_scope.dart';
 import '../data/source_store.dart';
 import '../data/window_mode.dart';
 import '../theme.dart';
-import '../widgets/vista_mark.dart';
+import '../widgets/vista_nav.dart';
 import 'catalog_screen.dart';
 import 'discover_screen.dart';
 import 'home_screen.dart';
@@ -88,8 +88,6 @@ class _AppShellState extends State<AppShell> {
   };
 
   Destination _current = Destination.home;
-  bool _navFocused = false;
-  bool _hover = false;
   DateTime? _lastBack;
 
   Catalog get _catalog => widget.library.catalog;
@@ -245,7 +243,7 @@ class _AppShellState extends State<AppShell> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
-          duration: Duration(seconds: 2),
+          duration: VistaMotion.toast,
           content: Text('Premi di nuovo Indietro per uscire'),
         ),
       );
@@ -301,23 +299,26 @@ class _AppShellState extends State<AppShell> {
 
   // ===== Telefono ===============================================================
 
+  /// Voci della barra in basso: Cerca e Impostazioni stanno nell'intestazione
+  /// della Home.
+  List<Destination> get _phoneItems => [
+    for (final d in _destinations)
+      if (d != Destination.search && d != Destination.settings) d,
+  ];
+
   Widget _phone(VistaLayout layout) {
-    final items = [
-      for (final d in _destinations)
-        if (d != Destination.settings) d,
-    ];
+    final items = _phoneItems;
+    final index = items.indexOf(_current);
     return Scaffold(
-      extendBody: true,
-      // Il contenuto scorre sotto la barra in basso ma non sotto quella di
-      // stato (orologio, batteria): lì si sovrapporrebbe al testo.
-      body: SafeArea(bottom: false, child: _content),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        child: _PillBar(
-          items: items,
-          current: _current,
-          onSelect: (d) => _go(d, focusContent: false),
-        ),
+      // La Home disegna il suo riquadro anche sotto la barra di stato;
+      // le altre sezioni no, lì si sovrapporrebbe al testo.
+      body: _current == Destination.home
+          ? _content
+          : SafeArea(bottom: false, child: _content),
+      bottomNavigationBar: VistaNavBar(
+        items: [for (final d in items) VistaNavItem(d.label, d.icon)],
+        selected: index < 0 ? null : index,
+        onSelect: (i) => _go(items[i], focusContent: false),
       ),
     );
   }
@@ -325,18 +326,20 @@ class _AppShellState extends State<AppShell> {
   // ===== TV, PC, tablet =========================================================
 
   Widget _wide(VistaLayout layout) {
-    const collapsed = 76.0;
-    const expandedWidth = 232.0;
-    // Con lo spazio di una finestra larga (anche su TV, vedi TvCanvas) la
-    // barra resta aperta; più stretta si apre col focus o col mouse.
-    final pinned = layout.width >= 1280;
-    final open = pinned || _navFocused || _hover;
-    final contentLeft = pinned ? expandedWidth : collapsed;
+    final all = _destinations;
+    final main = [
+      for (final d in all)
+        if (d != Destination.settings) d,
+    ];
+    final footer = all.contains(Destination.settings)
+        ? Destination.settings
+        : null;
+    final order = [...main, ?footer];
     return Scaffold(
       body: Stack(
         children: [
           Positioned.fill(
-            left: contentLeft,
+            left: layout.contentLeft,
             child: Focus(
               canRequestFocus: false,
               skipTraversal: true,
@@ -345,369 +348,52 @@ class _AppShellState extends State<AppShell> {
               child: SafeArea(bottom: false, left: false, child: _content),
             ),
           ),
-          // Velo sul contenuto quando la barra si apre sopra.
-          if (open && !pinned)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Color(0xF2050608),
-                        Color(0xB3050608),
-                        Color(0x00050608),
-                      ],
-                      stops: [0, 0.3, 0.6],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          // La barra si apre sopra il contenuto, piena e opaca: il contenuto
+          // non si sposta e non passa mai sotto una superficie trasparente.
           Positioned(
             left: 0,
             top: 0,
             bottom: 0,
-            child: MouseRegion(
-              onEnter: (_) => setState(() => _hover = true),
-              onExit: (_) => setState(() => _hover = false),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                width: open ? expandedWidth : collapsed,
-                child: _SideNav(
-                  scope: _navScope,
-                  nodes: _navNodes,
-                  items: _destinations,
-                  current: _current,
-                  expanded: open,
-                  source: widget.library.sources.length > 1
-                      ? '${widget.library.sources.length} fonti'
-                      : widget.library.source.displayName,
-                  onFocusChange: (v) => setState(() => _navFocused = v),
-                  onSelect: _go,
-                  onRight: _focusContent,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Barra laterale. All'ingresso del focus si posiziona sulla sezione
-/// corrente, non sulla voce più vicina geometricamente.
-class _SideNav extends StatelessWidget {
-  const _SideNav({
-    required this.scope,
-    required this.nodes,
-    required this.items,
-    required this.current,
-    required this.expanded,
-    required this.source,
-    required this.onFocusChange,
-    required this.onSelect,
-    required this.onRight,
-  });
-
-  final VoidCallback onRight;
-  final FocusScopeNode scope;
-  final Map<Destination, FocusNode> nodes;
-  final List<Destination> items;
-  final Destination current;
-  final bool expanded;
-  final String source;
-  final ValueChanged<bool> onFocusChange;
-  final ValueChanged<Destination> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final main = [
-      for (final d in items)
-        if (d != Destination.settings) d,
-    ];
-    return FocusScope(
-      node: scope,
-      onFocusChange: (has) {
-        onFocusChange(has);
-        if (has) {
-          // Entrando da destra si arriva sulla sezione corrente.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            final target = nodes[current];
-            final focused = FocusManager.instance.primaryFocus;
-            if (target != null &&
-                focused != null &&
-                !nodes.values.contains(focused)) {
-              target.requestFocus();
-            }
-          });
-        }
-      },
-      onKeyEvent: (node, e) {
-        // Destra dalla barra: torna al contenuto.
-        if (e is KeyDownEvent &&
-            e.logicalKey == LogicalKeyboardKey.arrowRight) {
-          onRight();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: expanded ? const Color(0xF20A0D12) : const Color(0x990A0D12),
-          border: const Border(
-            right: BorderSide(color: VistaColors.glassBorder),
-          ),
-        ),
-        child: SafeArea(
-          right: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 18, 12, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Brand(expanded: expanded),
-                const SizedBox(height: 22),
-                for (final d in main)
-                  _NavItem(
-                    destination: d,
-                    focusNode: nodes[d]!,
-                    selected: d == current,
-                    expanded: expanded,
-                    onTap: () => onSelect(d),
-                  ),
-                const Spacer(),
-                if (items.contains(Destination.settings))
-                  _NavItem(
-                    destination: Destination.settings,
-                    focusNode: nodes[Destination.settings]!,
-                    selected: current == Destination.settings,
-                    expanded: expanded,
-                    onTap: () => onSelect(Destination.settings),
-                  ),
-                if (expanded && source.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 8, 6, 0),
-                    child: Text(
-                      source,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: t.bodySmall?.copyWith(
-                        color: VistaColors.textTertiary,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Brand extends StatelessWidget {
-  const _Brand({required this.expanded});
-  final bool expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
-      child: Row(
-        children: [
-          const SizedBox(width: 6),
-          // Lo stesso marchio delle icone dell'app.
-          const VistaMark(size: 34),
-          if (expanded) ...[
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Vista',
-                maxLines: 1,
-                overflow: TextOverflow.clip,
-                softWrap: false,
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatefulWidget {
-  const _NavItem({
-    required this.destination,
-    required this.focusNode,
-    required this.selected,
-    required this.expanded,
-    required this.onTap,
-  });
-
-  final Destination destination;
-  final FocusNode focusNode;
-  final bool selected;
-  final bool expanded;
-  final VoidCallback onTap;
-
-  @override
-  State<_NavItem> createState() => _NavItemState();
-}
-
-class _NavItemState extends State<_NavItem> {
-  bool _focused = false;
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final sel = widget.selected;
-    final fg = sel
-        ? VistaColors.onPrimary
-        : (_focused ? Colors.white : VistaColors.textSecondary);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Tooltip(
-        message: widget.destination.label,
-        excludeFromSemantics: true,
-        triggerMode: widget.expanded ? TooltipTriggerMode.manual : null,
-        child: FocusableActionDetector(
-          focusNode: widget.focusNode,
-          onShowFocusHighlight: (v) => setState(() => _focused = v),
-          onShowHoverHighlight: (v) => setState(() => _hovered = v),
-          mouseCursor: SystemMouseCursors.click,
-          actions: {
-            ActivateIntent: CallbackAction<ActivateIntent>(
-              onInvoke: (_) {
-                widget.onTap();
-                return null;
+            width: VistaSize.railExpanded,
+            child: FocusScope(
+              node: _navScope,
+              onFocusChange: (has) {
+                if (!has) return;
+                // Entrando da destra si arriva sulla sezione corrente.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  final target = _navNodes[_current];
+                  final focused = FocusManager.instance.primaryFocus;
+                  if (target != null &&
+                      focused != null &&
+                      !_navNodes.values.contains(focused)) {
+                    target.requestFocus();
+                  }
+                });
               },
-            ),
-          },
-          child: GestureDetector(
-            onTap: widget.onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 13),
-              decoration: BoxDecoration(
-                color: sel
-                    ? Colors.white
-                    : (_focused || _hovered
-                          ? VistaColors.glassActive
-                          : Colors.transparent),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: _focused
-                      ? (sel ? VistaColors.accent : Colors.white)
-                      : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(widget.destination.icon, size: 22, color: fg),
-                  if (widget.expanded) ...[
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        widget.destination.label,
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.fade,
-                        style: TextStyle(
-                          color: fg,
-                          fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+              onKeyEvent: (node, e) {
+                // Destra dalla barra: torna al contenuto.
+                if (e is KeyDownEvent &&
+                    e.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  _focusContent();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: VistaRail(
+                items: [for (final d in main) VistaNavItem(d.label, d.icon)],
+                footer: footer == null
+                    ? null
+                    : VistaNavItem(footer.label, footer.icon),
+                selected: order.indexOf(_current),
+                focusNodes: [for (final d in order) _navNodes[d]!],
+                onSelect: (i) => _go(order[i]),
+                caption: widget.library.sources.length > 1
+                    ? '${widget.library.sources.length} fonti'
+                    : widget.library.source.displayName,
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Barra a pillola fluttuante del telefono: la voce attiva è una pillola
-/// bianca con l'etichetta.
-class _PillBar extends StatelessWidget {
-  const _PillBar({
-    required this.items,
-    required this.current,
-    required this.onSelect,
-  });
-  final List<Destination> items;
-  final Destination current;
-  final ValueChanged<Destination> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Glass(
-      radius: 999,
-      fill: const Color(0xCC10141B),
-      padding: const EdgeInsets.all(6),
-      child: SizedBox(
-        height: 54,
-        child: Row(
-          children: [
-            for (final d in items)
-              Expanded(
-                flex: d == current ? 2 : 1,
-                child: Semantics(
-                  button: true,
-                  selected: d == current,
-                  label: d.label,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () => onSelect(d),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      decoration: BoxDecoration(
-                        color: d == current ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            d.icon,
-                            size: 22,
-                            color: d == current
-                                ? VistaColors.onPrimary
-                                : VistaColors.textSecondary,
-                          ),
-                          if (d == current) ...[
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                d.short,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: VistaColors.onPrimary,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -760,9 +446,7 @@ class EmptyState extends StatelessWidget {
 void showToast(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
-    );
+    ..showSnackBar(SnackBar(content: Text(text), duration: VistaMotion.toast));
 }
 
 /// Per le schermate che vogliono la fonte corrente.

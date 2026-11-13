@@ -75,15 +75,27 @@ abstract final class VistaColors {
 /// velo copre almeno il 90%.
 abstract final class VistaScrims {
   /// Da sinistra: pieno fino al 0%, 92% al 40%, trasparente dal 75%.
+  /// Il primo 4% è pieno: copre il bordo dell'immagine, che sennò lascia
+  /// una riga sottile.
   static const horizontalColors = [
+    VistaColors.background,
     VistaColors.background,
     Color(0xEB0C0D0C),
     Color(0x000C0D0C),
   ];
-  static const horizontalStops = [0.0, 0.4, 0.75];
+  static const horizontalStops = [0.0, 0.04, 0.4, 0.75];
 
   /// Dal basso: pieno sul bordo inferiore, trasparente in alto.
   static const bottomColors = [VistaColors.background, Color(0x000C0D0C)];
+
+  /// Riquadro in evidenza del telefono: il testo sta nella metà bassa, che
+  /// è coperta almeno al 92%.
+  static const heroColors = [
+    VistaColors.background,
+    Color(0xEB0C0D0C),
+    Color(0x000C0D0C),
+  ];
+  static const heroStops = [0.0, 0.5, 0.85];
 }
 
 /// Spaziature. Nessun altro valore.
@@ -174,6 +186,14 @@ abstract final class VistaSize {
   static const homePreview = 300.0;
   static const phoneHero = 430.0;
 
+  /// Colonna di testo dell'anteprima: sta dove il velo del backdrop è pieno.
+  static const previewText = 560.0;
+
+  /// Backdrop dell'anteprima: frazione della larghezza e dell'altezza
+  /// dell'area dei contenuti, ancorato in alto a destra.
+  static const backdropWidth = 0.78;
+  static const backdropHeight = 0.72;
+
   /// Marchio nella barra laterale.
   static const railMark = 40.0;
 }
@@ -209,6 +229,9 @@ abstract final class VistaMotion {
   /// Comparsa dell'anello (solo opacità).
   static const focusRingFade = Duration(milliseconds: 150);
   static const focusRingCurve = Easing.standard;
+
+  /// Testo dell'anteprima che cambia col fuoco.
+  static const textFade = Duration(milliseconds: 150);
 
   /// Backdrop: attesa dopo che il fuoco si è fermato, poi dissolvenza.
   static const backdropDelay = Duration(milliseconds: 150);

@@ -12,12 +12,14 @@ const _migrated = [
   'lib/widgets/vista_row.dart',
   'lib/widgets/vista_controls.dart',
   'lib/widgets/vista_nav.dart',
+  'lib/widgets/vista_preview.dart',
   'lib/screens/gallery_screen.dart',
+  'lib/screens/home_screen.dart',
 ];
 
 /// Valori scritti a mano che devono stare solo in lib/tokens.dart.
 final _rules = <String, RegExp>{
-  'colore': RegExp(r'Color\(0x|Colors\.'),
+  'colore': RegExp(r'Color\(0x|\bColors\.'),
   'raggio': RegExp(r'circular\([1-9]'),
   'durata': RegExp(r'Duration\((milliseconds|seconds|minutes):'),
   'spaziatura': RegExp(
@@ -28,7 +30,7 @@ final _rules = <String, RegExp>{
 };
 
 /// Eccezioni motivate: timer di logica, non durate d'interfaccia.
-const _allowed = ['Duration(seconds: 20)'];
+const _allowed = ['Duration(seconds: 20)', 'Duration(seconds: 30)'];
 
 void main() {
   test('nei file migrati non ci sono valori fuori dai token', () {
