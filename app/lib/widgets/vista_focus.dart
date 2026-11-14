@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../theme.dart';
@@ -430,6 +431,10 @@ class VistaStatesFocusEffect extends StatefulWidget {
 }
 
 class _VistaStatesFocusEffectState extends State<VistaStatesFocusEffect> {
+  /// Questo controllo mostra il fuoco da tastiera o telecomando (conta per
+  /// [_keyboardFocusShown], come le card).
+  bool _shown = false;
+
   @override
   void initState() {
     super.initState();
@@ -450,24 +455,53 @@ class _VistaStatesFocusEffectState extends State<VistaStatesFocusEffect> {
   void dispose() {
     widget.states.removeListener(_changed);
     FocusManager.instance.removeHighlightModeListener(_mode);
+    if (_shown) _countKeyboardFocus(-1);
     super.dispose();
   }
 
-  void _changed() => setState(() {});
-  void _mode(FocusHighlightMode _) => setState(() {});
+  void _changed() {
+    setState(() {});
+    _sync();
+  }
+
+  void _mode(FocusHighlightMode _) {
+    setState(() {});
+    _sync();
+  }
+
+  bool get _focused =>
+      widget.states.value.contains(WidgetState.focused) &&
+      FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+
+  void _sync() {
+    final v = _focused;
+    if (v == _shown) return;
+    _shown = v;
+    void apply() => _countKeyboardFocus(v ? 1 : -1);
+    // Gli stati possono cambiare mentre si costruisce: si conta dopo.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => apply());
+    } else {
+      apply();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final s = widget.states.value;
-    final keyboard =
-        FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
-    final focused = s.contains(WidgetState.focused) && keyboard;
-    final hovered = s.contains(WidgetState.hovered);
-    return VistaFocusEffect(
-      active: focused || hovered,
-      elevated: focused,
-      kind: widget.kind,
-      radius: widget.radius,
+    final focused = _focused;
+    final hovered = widget.states.value.contains(WidgetState.hovered);
+    // Come per le card: se qualcosa ha il fuoco, il mouse non disegna un
+    // secondo anello.
+    return ValueListenableBuilder<bool>(
+      valueListenable: _keyboardFocusShown,
+      builder: (_, shown, child) => VistaFocusEffect(
+        active: focused || (hovered && !shown),
+        elevated: focused,
+        kind: widget.kind,
+        radius: widget.radius,
+        child: child!,
+      ),
       child: widget.child,
     );
   }

@@ -205,6 +205,14 @@ abstract final class VistaSize {
   /// canali non hanno un backdrop: al suo posto c'è il logo).
   static const channelLogoCard = 72.0;
   static const channelLogoPreview = 200.0;
+
+  /// Dettaglio: colonna di testo e altezza minima dell'intestazione
+  /// (frazione dell'altezza dello schermo: sotto si vede la prima riga).
+  static const detailText = 620.0;
+  static const detailHeader = 0.62;
+
+  /// Larghezza a cui si riduce l'artwork per ricavarne la tinta.
+  static const tintSample = 64;
 }
 
 /// Fuoco: scala, anello, ombra.

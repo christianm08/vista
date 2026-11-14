@@ -190,12 +190,17 @@ class VistaPosterCard extends StatelessWidget {
     this.onFocusChange,
     this.focusNode,
     this.autofocus = false,
+    this.heroTag,
   });
 
   final String title;
   final String image;
   final double restWidth;
   final String meta;
+
+  /// Elemento condiviso: la locandina vola nel backdrop del dettaglio che
+  /// apre (vedi Nav). Unico nella pagina: lo forma chi costruisce la riga.
+  final Object? heroTag;
 
   /// Etichetta in alto a sinistra (es. "IPTV").
   final String label;
@@ -227,41 +232,44 @@ class VistaPosterCard extends StatelessWidget {
         focusNode: focusNode,
         autofocus: autofocus,
         semanticLabel: title,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              NetImage(
-                image,
-                cacheWidth: _cacheWidth(context, restWidth),
-                // Il titolo nel riquadro solo se non è già scritto sotto.
-                fallback: VistaArtFallback(title, showTitle: !showText),
-              ),
-              if (label.isNotEmpty)
-                Positioned(
-                  top: VistaSpace.s8,
-                  left: VistaSpace.s8,
-                  child: VistaLabel(label),
+        child: _withHero(
+          context,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(VistaRadius.card),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                NetImage(
+                  image,
+                  cacheWidth: _cacheWidth(context, restWidth),
+                  // Il titolo nel riquadro solo se non è già scritto sotto.
+                  fallback: VistaArtFallback(title, showTitle: !showText),
                 ),
-              if (saved)
-                const Positioned(
-                  top: VistaSpace.s8,
-                  right: VistaSpace.s8,
-                  child: Icon(
-                    Icons.bookmark_rounded,
-                    size: VistaSize.iconSmall,
-                    color: VistaColors.text,
+                if (label.isNotEmpty)
+                  Positioned(
+                    top: VistaSpace.s8,
+                    left: VistaSpace.s8,
+                    child: VistaLabel(label),
                   ),
-                ),
-              if (progress != null && progress! > 0)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: VistaProgressBar(progress!, onImage: true),
-                ),
-            ],
+                if (saved)
+                  const Positioned(
+                    top: VistaSpace.s8,
+                    right: VistaSpace.s8,
+                    child: Icon(
+                      Icons.bookmark_rounded,
+                      size: VistaSize.iconSmall,
+                      color: VistaColors.text,
+                    ),
+                  ),
+                if (progress != null && progress! > 0)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: VistaProgressBar(progress!, onImage: true),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -275,6 +283,14 @@ class VistaPosterCard extends StatelessWidget {
       ],
     );
   }
+}
+
+extension on VistaPosterCard {
+  // Con le animazioni ridotte niente elemento condiviso.
+  Widget _withHero(BuildContext context, Widget child) =>
+      heroTag == null || MediaQuery.disableAnimationsOf(context)
+      ? child
+      : Hero(tag: heroTag!, child: child);
 }
 
 /// Card 16:9 con testo sotto: "Continua a guardare", canali, episodi.

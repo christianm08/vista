@@ -248,6 +248,8 @@ class _HomeScreenState extends State<HomeScreen> {
           width: pw,
           showText: posterText,
           autofocus: autofocus && i == 0,
+          // La stessa locandina può stare in più righe: il tag dice quale.
+          hero: '$key|${_keyOf(items[i])}',
         ),
       );
     }
@@ -611,6 +613,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required double width,
     required bool showText,
     bool autofocus = false,
+    Object? hero,
   }) {
     switch (item) {
       case Movie m:
@@ -622,6 +625,7 @@ class _HomeScreenState extends State<HomeScreen> {
           restWidth: width,
           showText: showText,
           autofocus: autofocus,
+          heroTag: hero,
           meta: metaLine([
             if ((m.year ?? t?.year ?? yearInTitle(m.title)) case final y?) '$y',
             _rating(m.rating, t),
@@ -629,7 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
           progress: user.progressOf(key)?.fraction,
           saved: user.isFavorite(key),
           onFocusChange: _onFocus(() => _moviePreview(m)),
-          onTap: () => Nav.openMovie(context, m),
+          onTap: () => Nav.openMovie(context, m, hero: hero),
           onLongPress: () => toggleMyList(context, key, _movieTitle(m)),
         );
       case Series s:
@@ -641,13 +645,14 @@ class _HomeScreenState extends State<HomeScreen> {
           restWidth: width,
           showText: showText,
           autofocus: autofocus,
+          heroTag: hero,
           meta: metaLine([
             if ((s.year ?? t?.year ?? yearInTitle(s.title)) case final y?) '$y',
             'Serie',
           ]),
           saved: user.isFavorite(key),
           onFocusChange: _onFocus(() => _seriesPreview(s)),
-          onTap: () => Nav.openSeries(context, s),
+          onTap: () => Nav.openSeries(context, s, hero: hero),
           onLongPress: () => toggleMyList(context, key, _seriesTitle(s)),
         );
       case SavedTitle t:
@@ -664,13 +669,14 @@ class _HomeScreenState extends State<HomeScreen> {
           restWidth: width,
           showText: showText,
           autofocus: autofocus,
+          heroTag: hero,
           meta: metaLine([
             if (t.year != null) '${t.year}',
             parts[1] == 'tv' ? 'Serie' : 'Film',
           ]),
           saved: true,
           onFocusChange: _onFocus(() => _savedPreview(t)),
-          onTap: () => Nav.openTmdb(context, tmdb),
+          onTap: () => Nav.openTmdb(context, tmdb, hero: hero),
           onLongPress: () => toggleSavedTitle(context, tmdb),
         );
     }

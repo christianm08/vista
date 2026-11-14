@@ -6,23 +6,34 @@ import '../data/source_store.dart';
 import '../data/user_store.dart';
 import '../theme.dart';
 import '../widgets/availability.dart';
-import '../widgets/focus_card.dart';
-import '../widgets/poster_card.dart';
+import '../widgets/list_titles.dart';
+import '../widgets/vista_cards.dart';
+import '../widgets/vista_controls.dart';
+import '../widgets/vista_detail.dart';
+import '../widgets/vista_row.dart';
 
-/// Scheda di un film o di una serie: sfondo, metadati, azioni, trama, cast
-/// e, per le serie, stagioni ed episodi con l'avanzamento.
+/// Scheda di un film o di una serie della lista IPTV: backdrop, titolo,
+/// metadati, azioni, dove altro si guarda e, per le serie, stagioni ed
+/// episodi con l'avanzamento; in fondo il cast.
 class TitleScreen extends StatefulWidget {
-  const TitleScreen.movie(Movie this.movie, {super.key})
+  const TitleScreen.movie(Movie this.movie, {super.key, this.heroTag})
     : series = null,
       resumeEpisode = null;
-  const TitleScreen.series(Series this.series, {super.key, this.resumeEpisode})
-    : movie = null;
+  const TitleScreen.series(
+    Series this.series, {
+    super.key,
+    this.resumeEpisode,
+    this.heroTag,
+  }) : movie = null;
 
   final Movie? movie;
   final Series? series;
 
   /// Episodio da riprendere subito (da "Continua a guardare").
   final String? resumeEpisode;
+
+  /// La locandina da cui si è aperta: atterra nel backdrop.
+  final Object? heroTag;
 
   @override
   State<TitleScreen> createState() => _TitleScreenState();
@@ -39,14 +50,17 @@ class _TitleScreenState extends State<TitleScreen> {
   bool _loading = true;
 
   bool get _isMovie => widget.movie != null;
-  String get _title => widget.movie?.title ?? widget.series!.title;
+  String get _rawTitle => widget.movie?.title ?? widget.series!.title;
+  String get _title => listTitle(_rawTitle, _tmdb?.title);
+  String get _id =>
+      _isMovie ? 'mv:${widget.movie!.id}' : 'sr:${widget.series!.id}';
+
   String get _poster {
     // Le locandine TMDB sono affidabili; quelle dei pannelli spesso no.
     final tm = _tmdb?.title.poster ?? '';
     if (tm.isNotEmpty) return tm;
     if (_details.poster.isNotEmpty) return _details.poster;
-    final own = widget.movie?.poster ?? widget.series!.poster;
-    return own.isNotEmpty ? own : (_tmdb?.title.poster ?? '');
+    return widget.movie?.poster ?? widget.series!.poster;
   }
 
   String get _backdrop {
@@ -64,6 +78,16 @@ class _TitleScreenState extends State<TitleScreen> {
     super.initState();
     _load();
     _loadTmdb();
+  }
+
+  final _primaryFocus = FocusNode(debugLabel: 'azione principale');
+  final _listFocus = FocusNode(debugLabel: 'la mia lista');
+
+  @override
+  void dispose() {
+    _primaryFocus.dispose();
+    _listFocus.dispose();
+    super.dispose();
   }
 
   /// Cerca il titolo su TMDB (se collegato). Gli errori non disturbano: la
@@ -104,6 +128,13 @@ class _TitleScreenState extends State<TitleScreen> {
           _season =
               _startEpisode(app.user)?.season ??
               (info.episodes.isEmpty ? null : info.episodes.first.season);
+        });
+        // Durante il caricamento il fuoco era su "La mia lista" (Riproduci
+        // era spento): ora passa all'azione principale.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _listFocus.hasFocus && _primaryFocus.context != null) {
+            _primaryFocus.requestFocus();
+          }
         });
         final id = widget.resumeEpisode;
         if (id != null) {
@@ -159,7 +190,7 @@ class _TitleScreenState extends State<TitleScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          duration: const Duration(seconds: 2),
+          duration: VistaMotion.toast,
           content: Text(
             user.isFavorite(_key)
                 ? 'Aggiunto alla tua lista'
@@ -173,90 +204,46 @@ class _TitleScreenState extends State<TitleScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     return Scaffold(
-      body: ListenableBuilder(
-        listenable: app.user,
-        builder: (context, _) => _body(context, app.user),
+      body: DetailTint(
+        image: _backdrop.isNotEmpty ? _backdrop : _poster,
+        child: ListenableBuilder(
+          listenable: app.user,
+          builder: (context, _) => _body(context, app.user),
+        ),
       ),
     );
   }
 
   Widget _body(BuildContext context, UserStore user) {
-    final layout = VistaLayout.of(context);
-    final g = layout.gutter;
-    final heroHeight = layout.compact
-        ? 240.0
-        : (layout.height * 0.62).clamp(300.0, 560.0);
-    return Stack(
-      children: [
-        // Sfondo in alto: immagine orizzontale o locandina sfocata.
-        Positioned(
-          left: 0,
-          right: 0,
-          top: 0,
-          height: heroHeight,
-          child: TitleBackdrop(
-            backdrop: _backdrop,
-            poster: _poster,
-            title: _title,
-          ),
+    final tmdb = _tmdb;
+    return VistaRowsPage(
+      rows: [
+        DetailHeader(
+          key: const ValueKey('head'),
+          id: _id,
+          kicker: _isMovie ? 'Film' : 'Serie',
+          title: _title,
+          meta: _meta,
+          plot: _plot,
+          notes: _notes,
+          backdrop: _backdrop,
+          poster: _poster,
+          heroTag: widget.heroTag,
+          actions: [..._actions(context, user), _listButton(user)],
+          status: _error != null
+              ? DetailStatus.error(_error!, onRetry: _load)
+              : (_loading ? const DetailStatus.loading() : null),
+          availability: tmdb == null
+              ? null
+              : AvailabilitySection(
+                  title: tmdb.title.title,
+                  availability: tmdb.availability,
+                  heading: 'Disponibile anche su',
+                ),
         ),
-        CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    g,
-                    layout.compact ? 4 : 18,
-                    g,
-                    0,
-                  ),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: IconButton(
-                      tooltip: 'Indietro',
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.arrow_back_rounded),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  g,
-                  layout.compact ? 60 : heroHeight * 0.18,
-                  g,
-                  0,
-                ),
-                child: layout.compact
-                    ? _headPhone(context, user)
-                    : _headWide(context, layout, user),
-              ),
-            ),
-            if (_tmdb case final d?) ...[
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(g, 26, g, 0),
-                sliver: SliverToBoxAdapter(
-                  child: AvailabilitySection(
-                    title: d.title.title,
-                    availability: d.availability,
-                    heading: 'Disponibile anche su',
-                  ),
-                ),
-              ),
-            ],
-            if (!_isMovie) ..._episodesSlivers(context, layout, user),
-            if (_tmdb case final d? when d.cast.isNotEmpty)
-              SliverPadding(
-                padding: const EdgeInsets.only(top: 26),
-                sliver: SliverToBoxAdapter(child: CastRow(d.cast)),
-              ),
-            const SliverToBoxAdapter(child: SizedBox(height: 40)),
-          ],
-        ),
+        if (!_isMovie) ?_episodesRow(context, user),
+        if (tmdb != null && tmdb.cast.isNotEmpty)
+          CastRow(key: const ValueKey('cast'), tmdb.cast),
       ],
     );
   }
@@ -266,7 +253,8 @@ class _TitleScreenState extends State<TitleScreen> {
   String get _meta {
     final m = widget.movie;
     final s = widget.series;
-    final year = m?.year ?? s?.year;
+    final year =
+        m?.year ?? s?.year ?? _tmdb?.title.year ?? yearInTitle(_rawTitle);
     final own = _details.genre.isNotEmpty
         ? _details.genre
         : (m?.genre ?? s?.genre ?? '');
@@ -276,15 +264,15 @@ class _TitleScreenState extends State<TitleScreen> {
     final rating = _details.rating.isNotEmpty
         ? _details.rating
         : (m?.rating ?? s?.rating ?? '');
-    final seasons = _episodes == null
+    final seasons = _episodes == null || _seasons.isEmpty
         ? null
         : (_seasons.length == 1 ? '1 stagione' : '${_seasons.length} stagioni');
     return metaLine([
       if (year != null) '$year',
-      genre.isNotEmpty ? genre : (m?.group ?? s?.group),
+      ?seasons,
+      genre,
       if (_isMovie && (_details.duration ?? _tmdb?.runtime) != null)
         formatDuration((_details.duration ?? _tmdb?.runtime)!),
-      ?seasons,
       if (rating.isNotEmpty) '★ $rating',
     ]);
   }
@@ -295,155 +283,23 @@ class _TitleScreenState extends State<TitleScreen> {
     return own.isNotEmpty ? own : (_tmdb?.title.overview ?? '');
   }
 
-  Widget _headWide(BuildContext context, VistaLayout layout, UserStore user) {
-    const posterW = 210.0;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        SizedBox(
-          width: posterW,
-          child: AspectRatio(
-            aspectRatio: 2 / 3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(VistaRadius.poster),
-              child: NetImage(
-                _poster,
-                cacheWidth: 420,
-                placeholder: TitlePlaceholder(_title),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 28),
-        Expanded(child: _info(context, layout, user)),
-      ],
-    );
-  }
+  List<String> get _notes => [
+    if (_details.director.isNotEmpty) 'Regia  ${_details.director}',
+    // Il cast con le foto c'è più sotto, se TMDB lo conosce.
+    if (_details.cast.isNotEmpty && (_tmdb?.cast.isEmpty ?? true))
+      'Cast  ${_details.cast}',
+  ];
 
-  Widget _headPhone(BuildContext context, UserStore user) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            SizedBox(
-              width: 110,
-              child: AspectRatio(
-                aspectRatio: 2 / 3,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(VistaRadius.poster),
-                  child: NetImage(
-                    _poster,
-                    cacheWidth: 300,
-                    placeholder: TitlePlaceholder(_title),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        _info(context, VistaLayout.of(context), user),
-      ],
-    );
-  }
-
-  Widget _info(BuildContext context, VistaLayout layout, UserStore user) {
-    final t = Theme.of(context).textTheme;
+  Widget _listButton(UserStore user) {
     final fav = user.isFavorite(_key);
-    final actions = _actions(context, user);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: (layout.compact ? t.headlineSmall : t.headlineMedium)
-              ?.copyWith(fontWeight: FontWeight.w800, height: 1.1),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _meta,
-          style: t.bodyMedium?.copyWith(color: VistaColors.textSecondary),
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            ...actions,
-            OutlinedButton.icon(
-              onPressed: _toggleList,
-              icon: Icon(
-                fav ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
-                size: 20,
-              ),
-              label: Text(fav ? 'Nella tua lista' : 'La mia lista'),
-            ),
-          ],
-        ),
-        if (_loading) ...[
-          const SizedBox(height: 14),
-          const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ],
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          Text(_error!, style: const TextStyle(color: Color(0xFFFF9C8A))),
-          TextButton(onPressed: _load, child: const Text('Riprova')),
-        ],
-        if (_plot.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Text(
-              _plot,
-              maxLines: layout.compact ? 6 : 4,
-              overflow: TextOverflow.ellipsis,
-              style: t.bodyMedium?.copyWith(
-                color: VistaColors.textSecondary,
-                height: 1.45,
-              ),
-            ),
-          ),
-        ],
-        if (_details.cast.isNotEmpty || _details.director.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  if (_details.director.isNotEmpty) ...[
-                    const TextSpan(
-                      text: 'Regia  ',
-                      style: TextStyle(color: VistaColors.textTertiary),
-                    ),
-                    TextSpan(text: _details.director),
-                    if (_details.cast.isNotEmpty) const TextSpan(text: '\n'),
-                  ],
-                  if (_details.cast.isNotEmpty) ...[
-                    const TextSpan(
-                      text: 'Cast  ',
-                      style: TextStyle(color: VistaColors.textTertiary),
-                    ),
-                    TextSpan(text: _details.cast),
-                  ],
-                ],
-              ),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: t.bodySmall?.copyWith(height: 1.5),
-            ),
-          ),
-        ],
-      ],
+    return DetailButton(
+      key: const ValueKey('list'),
+      focusNode: _listFocus,
+      // Finché Riproduci è spento (episodi in arrivo) il fuoco sta qui.
+      autofocus: !_isMovie && _startEpisode(user) == null,
+      icon: fav ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
+      label: fav ? 'Nella tua lista' : 'La mia lista',
+      onPressed: _toggleList,
     );
   }
 
@@ -453,19 +309,19 @@ class _TitleScreenState extends State<TitleScreen> {
       final p = user.progressOf(UserKey.movie(m.id));
       final resumable = p != null && p.resumable;
       return [
-        FilledButton.icon(
+        VistaButton.primary(
+          key: const ValueKey('play'),
           autofocus: true,
+          icon: Icons.play_arrow_rounded,
+          label: resumable ? 'Riprendi da ${_clock(p.position)}' : 'Riproduci',
           onPressed: () => Nav.playMovie(context, m),
-          icon: const Icon(Icons.play_arrow_rounded),
-          label: Text(
-            resumable ? 'Riprendi da ${_clock(p.position)}' : 'Riproduci',
-          ),
         ),
         if (resumable)
-          OutlinedButton.icon(
+          DetailButton(
+            key: const ValueKey('restart'),
+            icon: Icons.replay_rounded,
+            label: 'Dall\'inizio',
             onPressed: () => Nav.playMovie(context, m, fromStart: true),
-            icon: const Icon(Icons.replay_rounded, size: 20),
-            label: const Text('Dall\'inizio'),
           ),
       ];
     }
@@ -473,103 +329,93 @@ class _TitleScreenState extends State<TitleScreen> {
     final start = _startEpisode(user);
     if (eps == null || start == null) {
       return [
-        FilledButton.icon(
-          autofocus: true,
+        const VistaButton.primary(
+          key: ValueKey('play'),
+          icon: Icons.play_arrow_rounded,
+          label: 'Riproduci',
           onPressed: null,
-          icon: const Icon(Icons.play_arrow_rounded),
-          label: const Text('Riproduci'),
         ),
       ];
     }
     final p = user.progressOf(UserKey.episode(start.id));
     final resumable = p != null && p.resumable;
     return [
-      FilledButton.icon(
+      VistaButton.primary(
+        key: const ValueKey('play'),
+        focusNode: _primaryFocus,
         autofocus: true,
+        icon: Icons.play_arrow_rounded,
+        label: '${resumable ? 'Riprendi' : 'Guarda'} ${start.code}',
         onPressed: () => Nav.playEpisodes(context, widget.series!, eps, start),
-        icon: const Icon(Icons.play_arrow_rounded),
-        label: Text('${resumable ? 'Riprendi' : 'Guarda'} ${start.code}'),
       ),
     ];
   }
 
   // --- episodi -----------------------------------------------------------------
 
-  List<Widget> _episodesSlivers(
-    BuildContext context,
-    VistaLayout layout,
-    UserStore user,
-  ) {
+  Widget? _episodesRow(BuildContext context, UserStore user) {
     final eps = _episodes;
-    final g = layout.gutter;
-    if (eps == null) return const [];
-    if (eps.isEmpty) {
-      return [
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(g, 28, g, 0),
-          sliver: const SliverToBoxAdapter(
-            child: Text(
-              'Nessun episodio disponibile.',
-              style: TextStyle(color: VistaColors.textSecondary),
-            ),
-          ),
-        ),
-      ];
+    if (eps == null) {
+      return _error == null
+          ? const EpisodesSkeleton(key: ValueKey('episodes'), title: 'Episodi')
+          : null;
     }
+    if (eps.isEmpty) {
+      return const DetailNote(
+        'Nessun episodio disponibile.',
+        key: ValueKey('episodes'),
+      );
+    }
+    final layout = VistaLayout.of(context);
+    final w = layout.wideCardWidth;
+    final seasons = _seasons;
     final visible = eps.where((e) => e.season == _season).toList();
-    return [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(0, 30, 0, 6),
-          child: SizedBox(
-            height: 46,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: g),
-              itemCount: _seasons.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final n = _seasons[i];
-                return FocusCard(
-                  radius: 999,
-                  focusScale: 1.0,
-                  selected: n == _season,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  onTap: () => setState(() => _season = n),
-                  child: Text(
-                    'Stagione $n',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                );
-              },
-            ),
+    final fallback = _backdrop.isNotEmpty ? _backdrop : _poster;
+    return Column(
+      key: const ValueKey('episodes'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (seasons.length > 1) ...[
+          SeasonChips(
+            labels: [for (final n in seasons) 'Stagione $n'],
+            selected: seasons.indexOf(_season ?? seasons.first),
+            onSelected: (i) => setState(() => _season = seasons[i]),
           ),
-        ),
-      ),
-      SliverPadding(
-        padding: EdgeInsets.fromLTRB(g, 10, g, 0),
-        sliver: SliverList.separated(
+          const SizedBox(height: VistaSpace.s16),
+        ],
+        VistaRow(
+          // Cambiando stagione la riga riparte dal primo episodio.
+          key: ValueKey('season:$_season'),
+          title: seasons.length > 1 ? 'Episodi' : 'Stagione ${_season ?? 1}',
           itemCount: visible.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemKey: (i) => ValueKey('ep:${visible[i].id}'),
+          itemWidth: w,
+          itemHeight: VistaWideCard.heightFor(context, w),
           itemBuilder: (context, i) {
             final e = visible[i];
             final p = user.progressOf(UserKey.episode(e.id));
-            return _EpisodeRow(
-              episode: e,
-              fallbackImage: _backdrop.isNotEmpty ? _backdrop : _poster,
-              compact: layout.compact,
+            return VistaWideCard(
+              title: '${e.number}. ${e.title}',
+              meta: _episodeMeta(e, p),
+              image: e.image.isNotEmpty ? e.image : fallback,
+              restWidth: w,
               progress: p?.fraction,
-              watched: p?.finished ?? false,
               onTap: () => Nav.playEpisodes(context, widget.series!, eps, e),
             );
           },
         ),
-      ),
-    ];
+      ],
+    );
   }
+
+  /// "48 min · visto", "51 min · 36 min rimanenti".
+  static String _episodeMeta(Episode e, WatchProgress? p) => metaLine([
+    if (e.duration != null) formatDuration(e.duration!) else e.code,
+    if (p != null && p.finished)
+      'visto'
+    else if (p != null && p.resumable)
+      '${formatDuration(p.duration - p.position)} rimanenti',
+  ]);
 
   static String _clock(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
@@ -577,193 +423,5 @@ class _TitleScreenState extends State<TitleScreen> {
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
     return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
-  }
-}
-
-class TitleBackdrop extends StatelessWidget {
-  const TitleBackdrop({
-    super.key,
-    required this.backdrop,
-    required this.poster,
-    required this.title,
-  });
-  final String backdrop;
-  final String poster;
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final image = backdrop.isNotEmpty
-        ? NetImage(
-            backdrop,
-            cacheWidth: 1280,
-            opacity: 0.7,
-            placeholder: const SizedBox.shrink(),
-          )
-        : NetImage(
-            poster,
-            soft: true,
-            opacity: 0.5,
-            placeholder: TitlePlaceholder(title, showText: false),
-          );
-    // L'immagine sfuma nella trasparenza (non verso un colore pieno): sotto
-    // c'è lo sfondo con gli aloni e non si vede nessuno stacco.
-    // Immagine statica: RepaintBoundary evita di rifare la sfumatura mentre
-    // la pagina scorre sopra.
-    return RepaintBoundary(
-      child: ShaderMask(
-        blendMode: BlendMode.dstIn,
-        shaderCallback: (r) => const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
-          stops: [0, 0.55, 1],
-        ).createShader(r),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            image,
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0x8807090D), Color(0x0007090D)],
-                  stops: [0, 0.3],
-                ),
-              ),
-            ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [Color(0xE607090D), Color(0x0007090D)],
-                  stops: [0, 0.75],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EpisodeRow extends StatelessWidget {
-  const _EpisodeRow({
-    required this.episode,
-    required this.fallbackImage,
-    required this.compact,
-    required this.onTap,
-    this.progress,
-    this.watched = false,
-  });
-
-  final Episode episode;
-  final String fallbackImage;
-  final bool compact;
-  final double? progress;
-  final bool watched;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final e = episode;
-    final thumbW = compact ? 128.0 : 190.0;
-    return FocusCard(
-      radius: VistaRadius.card,
-      focusScale: 1.0,
-      fill: const Color(0x0AFFFFFF),
-      padding: const EdgeInsets.all(10),
-      onTap: onTap,
-      child: Row(
-        children: [
-          SizedBox(
-            width: thumbW,
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(VistaRadius.poster - 2),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    NetImage(
-                      e.image.isNotEmpty ? e.image : fallbackImage,
-                      cacheWidth: 400,
-                    ),
-                    const Center(
-                      child: Icon(
-                        Icons.play_circle_fill_rounded,
-                        size: 34,
-                        color: Color(0xCCFFFFFF),
-                      ),
-                    ),
-                    if (progress != null && progress! > 0)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: ProgressStrip(progress!),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${e.number}. ${e.title}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (watched)
-                      const Padding(
-                        padding: EdgeInsets.only(left: 6),
-                        child: Icon(
-                          Icons.check_circle_rounded,
-                          size: 18,
-                          color: VistaColors.accent,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  metaLine([
-                    e.code,
-                    if (e.duration != null) formatDuration(e.duration!),
-                  ]),
-                  style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
-                ),
-                if (e.plot.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    e.plot,
-                    maxLines: compact ? 2 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.bodySmall?.copyWith(
-                      color: VistaColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

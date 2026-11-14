@@ -11,6 +11,7 @@ import 'screens/player_screen.dart';
 import 'screens/title_screen.dart';
 import 'screens/tmdb_title_screen.dart';
 import 'screens/vod_player_screen.dart';
+import 'theme.dart';
 
 /// I servizi dell'app, raggiungibili da ogni schermata (anche dai player,
 /// che stanno su altre route): fonte e catalogo, guida TV, dati dell'utente.
@@ -53,18 +54,56 @@ class AppScope extends InheritedWidget {
 
 /// Azioni comuni: aprire una scheda, guardare un canale o un titolo.
 abstract final class Nav {
-  static Future<void> _push(BuildContext context, Widget screen) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  static Future<void> _push(
+    BuildContext context,
+    Widget screen, {
+    bool shared = false,
+  }) => Navigator.of(context).push(
+    shared
+        ? _SharedElementRoute<void>(builder: (_) => screen)
+        : MaterialPageRoute<void>(builder: (_) => screen),
+  );
 
-  static Future<void> openMovie(BuildContext context, Movie m) =>
-      _push(context, TitleScreen.movie(m));
+  /// Il tag dell'elemento condiviso, se c'è e le animazioni non sono ridotte.
+  static Object? _hero(BuildContext context, Object? tag) =>
+      MediaQuery.disableAnimationsOf(context) ? null : tag;
 
-  static Future<void> openSeries(BuildContext context, Series s) =>
-      _push(context, TitleScreen.series(s));
+  /// [hero]: il tag della locandina da cui si apre (vola nel backdrop).
+  static Future<void> openMovie(BuildContext context, Movie m, {Object? hero}) {
+    final tag = _hero(context, hero);
+    return _push(
+      context,
+      TitleScreen.movie(m, heroTag: tag),
+      shared: tag != null,
+    );
+  }
+
+  static Future<void> openSeries(
+    BuildContext context,
+    Series s, {
+    Object? hero,
+  }) {
+    final tag = _hero(context, hero);
+    return _push(
+      context,
+      TitleScreen.series(s, heroTag: tag),
+      shared: tag != null,
+    );
+  }
 
   /// Scheda di un titolo dal catalogo dei servizi di streaming.
-  static Future<void> openTmdb(BuildContext context, TmdbTitle t) =>
-      _push(context, TmdbTitleScreen(title: t));
+  static Future<void> openTmdb(
+    BuildContext context,
+    TmdbTitle t, {
+    Object? hero,
+  }) {
+    final tag = _hero(context, hero);
+    return _push(
+      context,
+      TmdbTitleScreen(title: t, heroTag: tag),
+      shared: tag != null,
+    );
+  }
 
   static Future<void> playChannel(
     BuildContext context,
@@ -190,4 +229,16 @@ Media streamMedia(BuildContext context, String url, {Duration? start}) {
     start: start,
     httpHeaders: ua == null ? null : {'User-Agent': ua},
   );
+}
+
+/// Rotta che parte da una locandina: dura quanto il volo dell'elemento
+/// condiviso (il volo del Hero dura quanto la rotta).
+class _SharedElementRoute<T> extends MaterialPageRoute<T> {
+  _SharedElementRoute({required super.builder});
+
+  @override
+  Duration get transitionDuration => VistaMotion.sharedElement;
+
+  @override
+  Duration get reverseTransitionDuration => VistaMotion.sharedElement;
 }

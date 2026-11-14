@@ -16,6 +16,10 @@ const _migrated = [
   'lib/screens/gallery_screen.dart',
   'lib/screens/home_screen.dart',
   'lib/widgets/list_titles.dart',
+  'lib/widgets/vista_detail.dart',
+  'lib/widgets/availability.dart',
+  'lib/screens/title_screen.dart',
+  'lib/screens/tmdb_title_screen.dart',
 ];
 
 /// Valori scritti a mano che devono stare solo in lib/tokens.dart.

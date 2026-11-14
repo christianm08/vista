@@ -52,8 +52,18 @@ String firstSentence(String plot) {
 /// nel fondo con due veli. Cambia con una dissolvenza incrociata (che si
 /// interrompe e riparte dallo stato corrente se il fuoco cambia ancora).
 class VistaBackdrop extends StatelessWidget {
-  const VistaBackdrop({super.key, required this.data});
+  const VistaBackdrop({
+    super.key,
+    required this.data,
+    this.heroTag,
+    this.flightShuttleBuilder,
+  });
   final VistaPreviewData? data;
+
+  /// Elemento condiviso attorno all'immagine (dettaglio: ci atterra la
+  /// locandina da cui si è aperto).
+  final Object? heroTag;
+  final HeroFlightShuttleBuilder? flightShuttleBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -73,70 +83,74 @@ class VistaBackdrop extends StatelessWidget {
               top: 0,
               right: 0,
               bottom: 0,
-              child: AnimatedSwitcher(
-                duration: reduce
-                    ? VistaMotion.reducedFade
-                    : VistaMotion.backdropFade,
-                switchInCurve: VistaMotion.standard,
-                switchOutCurve: VistaMotion.standard,
-                layoutBuilder: (current, previous) => Stack(
-                  fit: StackFit.expand,
-                  children: [...previous, ?current],
-                ),
-                child: KeyedSubtree(
-                  key: ValueKey(d?.art != null ? 'art:${d!.id}' : url),
-                  child: d?.art != null
-                      ? Align(
-                          alignment: Alignment.centerRight,
-                          child: Padding(
-                            padding: const EdgeInsets.only(
-                              right: VistaSpace.s64,
+              child: _withHero(
+                AnimatedSwitcher(
+                  duration: reduce
+                      ? VistaMotion.reducedFade
+                      : VistaMotion.backdropFade,
+                  switchInCurve: VistaMotion.standard,
+                  switchOutCurve: VistaMotion.standard,
+                  layoutBuilder: (current, previous) => Stack(
+                    fit: StackFit.expand,
+                    children: [...previous, ?current],
+                  ),
+                  child: KeyedSubtree(
+                    key: ValueKey(d?.art != null ? 'art:${d!.id}' : url),
+                    child: d?.art != null
+                        ? Align(
+                            alignment: Alignment.centerRight,
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                right: VistaSpace.s64,
+                              ),
+                              child: d!.art,
                             ),
-                            child: d!.art,
-                          ),
-                        )
-                      : d == null || url.isEmpty
-                      ? const SizedBox.expand()
-                      : d.backdrop.isNotEmpty
-                      ? NetImage(
-                          d.backdrop,
-                          cacheWidth:
-                              (c.maxWidth * (1 - VistaScrims.imageStart) * dpr)
-                                  .round(),
-                          placeholder: const SizedBox.expand(),
-                          fallback: const SizedBox.expand(),
-                        )
-                      // Solo la locandina: intera, appoggiata a destra.
-                      : Align(
-                          alignment: Alignment.centerRight,
-                          child: AspectRatio(
-                            aspectRatio: 2 / 3,
-                            // Anche il bordo sinistro della locandina sfuma:
-                            // niente spigolo netto nel mezzo dello schermo.
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                NetImage(
-                                  d.poster,
-                                  cacheWidth: (c.maxHeight * 2 / 3 * dpr)
-                                      .round(),
-                                  placeholder: const SizedBox.expand(),
-                                  fallback: const SizedBox.expand(),
-                                ),
-                                const DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.centerLeft,
-                                      end: Alignment.centerRight,
-                                      colors: VistaScrims.horizontalColors,
-                                      stops: VistaScrims.horizontalStops,
+                          )
+                        : d == null || url.isEmpty
+                        ? const SizedBox.expand()
+                        : d.backdrop.isNotEmpty
+                        ? NetImage(
+                            d.backdrop,
+                            cacheWidth:
+                                (c.maxWidth *
+                                        (1 - VistaScrims.imageStart) *
+                                        dpr)
+                                    .round(),
+                            placeholder: const SizedBox.expand(),
+                            fallback: const SizedBox.expand(),
+                          )
+                        // Solo la locandina: intera, appoggiata a destra.
+                        : Align(
+                            alignment: Alignment.centerRight,
+                            child: AspectRatio(
+                              aspectRatio: 2 / 3,
+                              // Anche il bordo sinistro della locandina sfuma:
+                              // niente spigolo netto nel mezzo dello schermo.
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  NetImage(
+                                    d.poster,
+                                    cacheWidth: (c.maxHeight * 2 / 3 * dpr)
+                                        .round(),
+                                    placeholder: const SizedBox.expand(),
+                                    fallback: const SizedBox.expand(),
+                                  ),
+                                  const DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.centerLeft,
+                                        end: Alignment.centerRight,
+                                        colors: VistaScrims.horizontalColors,
+                                        stops: VistaScrims.horizontalStops,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
+                  ),
                 ),
               ),
             ),
@@ -164,6 +178,16 @@ class VistaBackdrop extends StatelessWidget {
       },
     );
   }
+}
+
+extension on VistaBackdrop {
+  Widget _withHero(Widget image) => heroTag == null
+      ? image
+      : Hero(
+          tag: heroTag!,
+          flightShuttleBuilder: flightShuttleBuilder,
+          child: image,
+        );
 }
 
 /// Testo dell'anteprima: sopratitolo, titolo, metadati, una frase di trama,
