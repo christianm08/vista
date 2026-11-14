@@ -100,6 +100,19 @@ abstract final class VistaScrims {
     Color(0x000C0D0C),
   ];
   static const heroStops = [0.0, 0.5, 0.85];
+
+  /// Dettaglio (wide): maschera che fa svanire il backdrop prima del fondo
+  /// dell'intestazione, con una curva morbida (opaco = immagine visibile).
+  /// Una maschera e non un velo: sotto un velo quasi pieno, su Windows,
+  /// restava visibile la riga dove finisce l'immagine.
+  static const detailFadeColors = [
+    Color(0x00FFFFFF),
+    Color(0x00FFFFFF),
+    Color(0x40FFFFFF),
+    Color(0xB3FFFFFF),
+    Color(0xFFFFFFFF),
+  ];
+  static const detailFadeStops = [0.0, 0.06, 0.2, 0.36, 0.55];
 }
 
 /// Spaziature. Nessun altro valore.
@@ -213,6 +226,10 @@ abstract final class VistaSize {
 
   /// Larghezza a cui si riduce l'artwork per ricavarne la tinta.
   static const tintSample = 64;
+
+  /// Foto rotonda del cast (larghezza della card): wide e telefono.
+  static const castPhoto = 112.0;
+  static const castPhotoCompact = 88.0;
 }
 
 /// Fuoco: scala, anello, ombra.

@@ -4,7 +4,6 @@ import 'package:vista_resolver/vista_resolver.dart';
 import '../app_scope.dart';
 import '../data/service_launcher.dart';
 import '../theme.dart';
-import 'vista_cards.dart';
 import 'vista_controls.dart';
 import 'vista_detail.dart';
 import 'vista_focus.dart';
@@ -134,20 +133,7 @@ class AvailabilitySection extends StatelessWidget {
                   }
                 },
               ),
-          ],
-        ),
-        const SizedBox(height: VistaSpace.s12),
-        Wrap(
-          spacing: VistaSpace.s12,
-          runSpacing: VistaSpace.s8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(
-              offers.isEmpty
-                  ? 'Dati sulla disponibilità: JustWatch'
-                  : 'Si apre nell\'app del servizio · Dati: JustWatch',
-              style: t.bodySmall?.copyWith(color: colors.meta),
-            ),
+            // In coda ai servizi: una riga in meno sotto le azioni.
             if (availability.link.isNotEmpty)
               VistaChip(
                 label: 'Tutte le opzioni',
@@ -156,6 +142,13 @@ class AvailabilitySection extends StatelessWidget {
                 onSelected: () => openLink(availability.link),
               ),
           ],
+        ),
+        const SizedBox(height: VistaSpace.s8),
+        Text(
+          offers.isEmpty
+              ? 'Dati sulla disponibilità: JustWatch'
+              : 'Si apre nell\'app del servizio · Dati: JustWatch',
+          style: t.bodySmall?.copyWith(color: colors.meta),
         ),
       ],
     );
@@ -220,7 +213,8 @@ class _OfferChip extends StatelessWidget {
   }
 }
 
-/// Riga del cast: foto, nome e personaggio, con le misure delle locandine.
+/// Riga del cast: foto rotonda, nome e personaggio. Più piccola delle
+/// locandine: sono facce, non titoli.
 class CastRow extends StatelessWidget {
   const CastRow(this.cast, {super.key});
   final List<CastMember> cast;
@@ -228,24 +222,91 @@ class CastRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final layout = VistaLayout.of(context);
-    final w = layout.posterWidth;
+    final w = layout.compact ? VistaSize.castPhotoCompact : VistaSize.castPhoto;
     return VistaRow(
       title: 'Cast',
       itemCount: cast.length,
       itemKey: (i) => ValueKey('cast:$i:${cast[i].name}'),
       itemWidth: w,
-      itemHeight: VistaPosterCard.heightFor(context, w, true),
-      itemBuilder: (context, i) {
-        final c = cast[i];
-        return VistaPosterCard(
-          title: c.name,
-          meta: c.character,
-          image: c.photo,
-          restWidth: w,
-          // Solo da guardare: col telecomando ci si arriva per scorrere.
-          onTap: () {},
-        );
-      },
+      itemHeight: w + layout.cardTextHeight,
+      itemBuilder: (context, i) => _CastCard(cast[i], size: w),
+    );
+  }
+}
+
+class _CastCard extends StatelessWidget {
+  const _CastCard(this.member, {required this.size});
+  final CastMember member;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = VistaLayout.of(context);
+    final t = Theme.of(context).textTheme;
+    final name = member.name.trim();
+    final initials = [
+      for (final p in name.split(RegExp(r'\s+')).take(2))
+        if (p.isNotEmpty) p[0].toUpperCase(),
+    ].join();
+    return Column(
+      children: [
+        SizedBox.square(
+          dimension: size,
+          child: VistaFocusable(
+            // Solo da guardare: col telecomando ci si arriva per scorrere.
+            onTap: () {},
+            radius: VistaRadius.full,
+            semanticLabel: member.character.isEmpty
+                ? name
+                : '$name, ${member.character}',
+            child: ClipOval(
+              child: NetImage(
+                member.photo,
+                cacheWidth: (size * MediaQuery.devicePixelRatioOf(context))
+                    .round(),
+                fallback: ColoredBox(
+                  color: VistaColors.surfaceSelected,
+                  child: Center(
+                    child: Text(
+                      initials,
+                      style: t.titleMedium?.copyWith(
+                        color: VistaColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(
+          height: layout.cardTextHeight,
+          child: Padding(
+            padding: EdgeInsets.only(top: layout.cardTextGap),
+            child: Column(
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: t.titleSmall,
+                ),
+                if (member.character.isNotEmpty) ...[
+                  const SizedBox(height: VistaSpace.s4),
+                  Text(
+                    member.character,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: t.bodySmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

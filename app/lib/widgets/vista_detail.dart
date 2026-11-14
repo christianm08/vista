@@ -283,15 +283,26 @@ class DetailBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final layout = VistaLayout.of(context);
     if (!layout.compact) {
-      return VistaBackdrop(
-        data: VistaPreviewData(
-          id: id,
-          title: title,
-          backdrop: backdrop,
-          poster: poster,
+      // L'immagine svanisce prima del fondo dell'intestazione: niente
+      // bordo dove comincia la riga sotto.
+      return ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (r) => const LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: VistaScrims.detailFadeColors,
+          stops: VistaScrims.detailFadeStops,
+        ).createShader(r),
+        child: VistaBackdrop(
+          data: VistaPreviewData(
+            id: id,
+            title: title,
+            backdrop: backdrop,
+            poster: poster,
+          ),
+          heroTag: heroTag,
+          flightShuttleBuilder: detailShuttle(compact: false),
         ),
-        heroTag: heroTag,
-        flightShuttleBuilder: detailShuttle(compact: false),
       );
     }
     final dpr = MediaQuery.devicePixelRatioOf(context);
@@ -461,7 +472,7 @@ class DetailHeader extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: VistaSize.detailText),
             child: text,
           ),
-          const SizedBox(height: VistaSpace.s32),
+          const SizedBox(height: VistaSpace.s24),
           Wrap(
             spacing: VistaSpace.s16,
             runSpacing: VistaSpace.s12,
@@ -472,7 +483,7 @@ class DetailHeader extends StatelessWidget {
             status!,
           ],
           if (availability != null) ...[
-            const SizedBox(height: VistaSpace.s24),
+            const SizedBox(height: VistaSpace.s16),
             availability!,
           ],
         ],
