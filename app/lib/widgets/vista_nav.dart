@@ -135,15 +135,18 @@ class _VistaRailState extends State<VistaRail>
       onTap: () => widget.onSelect(i),
     );
 
-    return MouseRegion(
-      onEnter: (_) => _set(() => _hover = true),
-      onExit: (_) => _set(() => _hover = false),
-      child: Focus(
-        canRequestFocus: false,
-        skipTraversal: true,
-        onFocusChange: (v) => _set(() => _focus = v),
-        child: ClipRect(
-          clipper: _RevealClipper(width),
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (v) => _set(() => _focus = v),
+      child: ClipRect(
+        clipper: _RevealClipper(width),
+        // Il mouse conta solo dentro la parte rivelata: da chiusa la
+        // striscia delle icone, non tutta la larghezza da aperta (che
+        // copriva le prime card e apriva la barra troppo presto).
+        child: MouseRegion(
+          onEnter: (_) => _set(() => _hover = true),
+          onExit: (_) => _set(() => _hover = false),
           child: AnimatedBuilder(
             animation: _curve,
             builder: (_, c) => ColoredBox(
