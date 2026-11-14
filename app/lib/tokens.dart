@@ -101,7 +101,7 @@ abstract final class VistaScrims {
   ];
   static const heroStops = [0.0, 0.5, 0.85];
 
-  /// Dettaglio (wide): maschera che fa svanire il backdrop prima del fondo
+  /// Dettaglio (wide e telefono): maschera che fa svanire il backdrop prima del fondo
   /// dell'intestazione, con una curva morbida (opaco = immagine visibile).
   /// Una maschera e non un velo: sotto un velo quasi pieno, su Windows,
   /// restava visibile la riga dove finisce l'immagine.

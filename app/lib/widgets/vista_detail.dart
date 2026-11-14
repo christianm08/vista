@@ -283,17 +283,8 @@ class DetailBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final layout = VistaLayout.of(context);
     if (!layout.compact) {
-      // L'immagine svanisce prima del fondo dell'intestazione: niente
-      // bordo dove comincia la riga sotto.
-      return ShaderMask(
-        blendMode: BlendMode.dstIn,
-        shaderCallback: (r) => const LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: VistaScrims.detailFadeColors,
-          stops: VistaScrims.detailFadeStops,
-        ).createShader(r),
-        child: VistaBackdrop(
+      return _fadeOut(
+        VistaBackdrop(
           data: VistaPreviewData(
             id: id,
             title: title,
@@ -321,24 +312,40 @@ class DetailBackdrop extends StatelessWidget {
         child: image,
       );
     }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        image,
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: VistaScrims.heroColors,
-              stops: VistaScrims.heroStops,
+    return _fadeOut(
+      Stack(
+        fit: StackFit.expand,
+        children: [
+          image,
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: VistaScrims.heroColors,
+                stops: VistaScrims.heroStops,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
+
+/// L'immagine svanisce prima di dove finisce: niente bordo dove comincia
+/// quello che c'è sotto (le righe, o il resto dell'intestazione sul
+/// telefono).
+Widget _fadeOut(Widget child) => ShaderMask(
+  blendMode: BlendMode.dstIn,
+  shaderCallback: (r) => const LinearGradient(
+    begin: Alignment.bottomCenter,
+    end: Alignment.topCenter,
+    colors: VistaScrims.detailFadeColors,
+    stops: VistaScrims.detailFadeStops,
+  ).createShader(r),
+  child: child,
+);
 
 // --- intestazione ---------------------------------------------------------------
 
@@ -393,6 +400,9 @@ class DetailHeader extends StatelessWidget {
     final colors = DetailColors.of(context);
     final t = Theme.of(context).textTheme;
     final compact = layout.compact;
+    // Senza nessuna immagine non si tiene spazio per il backdrop: il testo
+    // sale e la prima riga (episodi, cast) si vede subito.
+    final hasImage = backdrop.isNotEmpty || poster.isNotEmpty;
     final top = MediaQuery.paddingOf(context).top + layout.safe.top;
     // Stesso margine delle righe sotto (stagioni, episodi, cast): un solo
     // bordo sinistro per tutta la pagina.
@@ -458,7 +468,7 @@ class DetailHeader extends StatelessWidget {
     final content = Padding(
       padding: EdgeInsets.fromLTRB(
         left,
-        compact
+        compact && hasImage
             ? top + VistaSize.phoneHero * VistaScrims.heroStops[1]
             : top + (layout.tv ? VistaSpace.s24 : VistaSpace.s64),
         right,
@@ -492,24 +502,27 @@ class DetailHeader extends StatelessWidget {
 
     return ConstrainedBox(
       constraints: BoxConstraints(
-        minHeight: compact ? 0 : layout.height * VistaSize.detailHeader,
+        minHeight: compact || !hasImage
+            ? 0
+            : layout.height * VistaSize.detailHeader,
       ),
       child: Stack(
         children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: compact ? null : 0,
-            height: compact ? top + VistaSize.phoneHero : null,
-            child: DetailBackdrop(
-              id: id,
-              title: title,
-              backdrop: backdrop,
-              poster: poster,
-              heroTag: heroTag,
+          if (hasImage)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: compact ? null : 0,
+              height: compact ? top + VistaSize.phoneHero : null,
+              child: DetailBackdrop(
+                id: id,
+                title: title,
+                backdrop: backdrop,
+                poster: poster,
+                heroTag: heroTag,
+              ),
             ),
-          ),
           content,
           // Su TV si torna indietro col telecomando; altrove serve il tasto.
           if (!layout.tv)
