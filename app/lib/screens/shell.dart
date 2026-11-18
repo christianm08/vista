@@ -6,6 +6,7 @@ import '../app_scope.dart';
 import '../data/source_store.dart';
 import '../data/window_mode.dart';
 import '../theme.dart';
+import '../widgets/vista_controls.dart';
 import '../widgets/vista_nav.dart';
 import 'catalog_screen.dart';
 import 'discover_screen.dart';
@@ -399,43 +400,79 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-/// Testo per le sezioni vuote.
+/// Stato vuoto o di errore di una sezione: una frase, una riga di
+/// spiegazione e, se c'è, un'azione ("Riprova" per gli errori).
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
     required this.icon,
     required this.title,
     this.message = '',
-  });
+    this.action,
+    this.onAction,
+    this.autofocus = false,
+  }) : error = false;
+
+  /// Qualcosa non ha funzionato: cosa è successo e "Riprova".
+  const EmptyState.error({
+    super.key,
+    required this.title,
+    this.message = '',
+    this.onAction,
+    this.autofocus = false,
+  }) : icon = Icons.error_outline_rounded,
+       action = 'Riprova',
+       error = true;
+
   final IconData icon;
   final String title;
   final String message;
+
+  /// Testo del pulsante; senza [onAction] il pulsante non c'è.
+  final String? action;
+  final VoidCallback? onAction;
+  final bool autofocus;
+  final bool error;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 44, color: VistaColors.textTertiary),
-            const SizedBox(height: 14),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            if (message.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: t.bodyMedium?.copyWith(color: VistaColors.textSecondary),
+        padding: const EdgeInsets.all(VistaSpace.s32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: VistaSize.stateText),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: VistaSize.stateIcon,
+                color: error ? VistaColors.error : VistaColors.textSecondary,
               ),
+              const SizedBox(height: VistaSpace.s16),
+              Text(title, textAlign: TextAlign.center, style: t.titleLarge),
+              if (message.isNotEmpty) ...[
+                const SizedBox(height: VistaSpace.s8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: t.bodyMedium?.copyWith(
+                    color: VistaColors.textSecondary,
+                  ),
+                ),
+              ],
+              if (action != null && onAction != null) ...[
+                const SizedBox(height: VistaSpace.s24),
+                VistaButton.tonal(
+                  label: action!,
+                  icon: error ? Icons.refresh_rounded : null,
+                  autofocus: autofocus,
+                  onPressed: onAction,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

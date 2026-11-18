@@ -4,8 +4,11 @@ import 'package:vista_resolver/vista_resolver.dart';
 import '../app_scope.dart';
 import '../data/user_store.dart';
 import '../theme.dart';
-import '../widgets/focus_card.dart';
-import '../widgets/poster_card.dart';
+import '../widgets/list_titles.dart';
+import '../widgets/vista_cards.dart';
+import '../widgets/vista_controls.dart';
+import '../widgets/vista_focus.dart';
+import '../widgets/vista_grid.dart';
 import 'home_screen.dart' show toggleMyList;
 import 'shell.dart';
 
@@ -166,12 +169,14 @@ class _CatalogScreenState extends State<CatalogScreen> {
     ];
   }
 
-  String _label(String g) => switch (g) {
-    _all => _movies ? 'Tutti i film' : 'Tutte le serie',
-    _myList => 'La mia lista',
-    _inProgress => 'In corso',
-    _ => g,
-  };
+  static const _special = {_myList: 'La mia lista', _inProgress: 'In corso'};
+
+  /// Nomi delle categorie da mostrare: ripuliti (vedi [groupLabels]).
+  Map<String, String> _names = const {};
+
+  String _label(String g) => g == _all
+      ? (_movies ? 'Tutti i film' : 'Tutte le serie')
+      : _names[g] ?? _special[g] ?? cleanGroupName(g);
 
   IconData? _icon(String g) => switch (g) {
     _all => Icons.apps_rounded,
@@ -180,11 +185,31 @@ class _CatalogScreenState extends State<CatalogScreen> {
     _ => null,
   };
 
-  void _open(_Item i) {
+  /// Un nodo per categoria: dalla griglia, a sinistra si torna su quella
+  /// scelta, non sulla più vicina.
+  final _categoryNodes = <String, FocusNode>{};
+  FocusNode _categoryNode(String g) => _categoryNodes.putIfAbsent(
+    g,
+    () => FocusNode(debugLabel: 'categoria $g'),
+  );
+
+  @override
+  void dispose() {
+    for (final n in _categoryNodes.values) {
+      n.dispose();
+    }
+    super.dispose();
+  }
+
+  void _pick(String g) {
+    if (g != _group) setState(() => _group = g);
+  }
+
+  void _open(_Item i, Object hero) {
     if (i.movie != null) {
-      Nav.openMovie(context, i.movie!);
+      Nav.openMovie(context, i.movie!, hero: hero);
     } else {
-      Nav.openSeries(context, i.series!);
+      Nav.openSeries(context, i.series!, hero: hero);
     }
   }
 
@@ -192,32 +217,21 @@ class _CatalogScreenState extends State<CatalogScreen> {
     final s = await showDialog<_Sort>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
         title: const Text('Ordina per'),
         children: [
           for (final o in _Sort.values)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(ctx, o),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      o == _sort
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                      size: 20,
-                      color: o == _sort
-                          ? VistaColors.accent
-                          : VistaColors.textTertiary,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(o.label),
-                  ],
-                ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: VistaSize.icon + VistaSpace.s12,
+                    child: o == _sort
+                        ? const Icon(Icons.check_rounded)
+                        : const SizedBox.shrink(),
+                  ),
+                  Text(o.label),
+                ],
               ),
             ),
         ],
@@ -237,6 +251,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
         _memo(lib.catalog);
         final groups = _allGroups(app.user);
         if (!groups.any((g) => g.$1 == _group)) _group = _all;
+        _names = groupLabels([
+          for (final (g, _) in groups)
+            if (g != _all) g,
+        ], fixed: _special);
         final items = _visible(app.user);
         final layout = VistaLayout.of(context);
         return layout.compact
@@ -256,82 +274,50 @@ class _CatalogScreenState extends State<CatalogScreen> {
     UserStore user,
   ) {
     final t = Theme.of(context).textTheme;
-    final sideWidth = layout.width >= 1400 ? 260.0 : 210.0;
-    return SafeArea(
-      left: false,
+    final g = layout.gutter;
+    final top = layout.safe.top > VistaSpace.s32
+        ? layout.safe.top
+        : VistaSpace.s32;
+    // Attorno alle voci, spazio per l'anello di fuoco.
+    const ring = VistaFocus.ringGap + VistaFocus.ringWidth;
+    return FocusTraversalGroup(
+      policy: VistaTraversalPolicy(),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            width: sideWidth,
+            width: VistaSize.catalogSide + g,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 22, 6, 12),
+              padding: EdgeInsets.fromLTRB(
+                g - ring,
+                top,
+                0,
+                layout.safe.bottom,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 0, 0, 12),
-                    child: Text(
-                      _title,
-                      style: t.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                    padding: const EdgeInsets.only(left: ring),
+                    child: Text(_title, style: t.headlineSmall),
                   ),
+                  const SizedBox(height: VistaSpace.s16),
                   Expanded(
-                    child: ListView.builder(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(ring),
                       itemCount: groups.length,
-                      itemExtent: 44,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: VistaSpace.s4),
                       itemBuilder: (_, i) {
-                        final (g, n) = groups[i];
-                        final sel = g == _group;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: FocusCard(
-                            radius: 10,
-                            focusScale: 1.0,
-                            fill: Colors.transparent,
-                            outline: false,
-                            selected: sel,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            onTap: () => setState(() => _group = g),
-                            child: Row(
-                              children: [
-                                if (_icon(g) != null) ...[
-                                  Icon(
-                                    _icon(g),
-                                    size: 18,
-                                    color: sel
-                                        ? VistaColors.onPrimary
-                                        : VistaColors.textSecondary,
-                                  ),
-                                  const SizedBox(width: 10),
-                                ],
-                                Expanded(
-                                  child: Text(
-                                    _label(g),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: sel
-                                          ? FontWeight.w800
-                                          : FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                                Text(
-                                  '$n',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: sel
-                                        ? VistaColors.onPrimary
-                                        : VistaColors.textTertiary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        final (gr, n) = groups[i];
+                        return _Category(
+                          key: ValueKey(gr),
+                          focusNode: _categoryNode(gr),
+                          icon: _icon(gr),
+                          label: _label(gr),
+                          count: n,
+                          selected: gr == _group,
+                          onTap: () => _pick(gr),
                         );
                       },
                     ),
@@ -341,40 +327,39 @@ class _CatalogScreenState extends State<CatalogScreen> {
             ),
           ),
           Expanded(
-            child: CustomScrollView(
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 26, 28, 14),
-                  sliver: SliverToBoxAdapter(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${_label(_group)}  ·  ${items.length}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: t.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _pickSort,
-                          icon: const Icon(Icons.sort_rounded, size: 18),
-                          label: Text(_sort.label),
-                        ),
-                      ],
+            child: _grid(
+              context,
+              layout,
+              items,
+              user,
+              header: Padding(
+                padding: EdgeInsets.fromLTRB(g, top, g + layout.safe.right, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_label(_group)}  ·  ${items.length}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.titleLarge,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: VistaSpace.s16),
+                    VistaButton.tonal(
+                      icon: Icons.sort_rounded,
+                      label: _sort.label,
+                      onPressed: _pickSort,
+                    ),
+                  ],
                 ),
-                _grid(
-                  context,
-                  layout,
-                  items,
-                  user,
-                  const EdgeInsets.fromLTRB(18, 4, 28, 32),
-                ),
-              ],
+              ),
+              padding: EdgeInsets.fromLTRB(
+                g,
+                0,
+                g + layout.safe.right,
+                VistaSpace.s32 + layout.safe.bottom,
+              ),
+              onExitLeft: () => _categoryNode(_group).requestFocus(),
             ),
           ),
         ],
@@ -392,72 +377,55 @@ class _CatalogScreenState extends State<CatalogScreen> {
     UserStore user,
   ) {
     final t = Theme.of(context).textTheme;
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 6, 4),
+    final g = layout.gutter;
+    final reserve = layout.rowReserve;
+    return SafeArea(
+      bottom: false,
+      child: _grid(
+        context,
+        layout,
+        items,
+        user,
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(g, VistaSpace.s8, VistaSpace.s8, 0),
               child: Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      _title,
-                      style: t.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  IconButton(
+                  Expanded(child: Text(_title, style: t.headlineSmall)),
+                  VistaIconButton(
+                    icon: Icons.sort_rounded,
                     tooltip: 'Ordina: ${_sort.label}',
                     onPressed: _pickSort,
-                    icon: const Icon(Icons.sort_rounded),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 52,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              itemCount: groups.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final (g, n) = groups[i];
-                return FocusCard(
-                  radius: 999,
-                  focusScale: 1.0,
-                  selected: _group == g,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  onTap: () => setState(() => _group = g),
-                  child: Text(
-                    '${_label(g)}  $n',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                );
-              },
+            SizedBox(
+              height: layout.chipHeight + reserve * 2,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                padding: EdgeInsets.symmetric(horizontal: g, vertical: reserve),
+                itemCount: groups.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: VistaSpace.s8),
+                itemBuilder: (_, i) {
+                  final (gr, n) = groups[i];
+                  return VistaChip(
+                    key: ValueKey(gr),
+                    label: '${_label(gr)}  $n',
+                    selected: _group == gr,
+                    onSelected: () => _pick(gr),
+                  );
+                },
+              ),
             ),
-          ),
+          ],
         ),
-        _grid(
-          context,
-          layout,
-          items,
-          user,
-          const EdgeInsets.fromLTRB(16, 10, 16, 110),
-        ),
-      ],
+        padding: EdgeInsets.fromLTRB(g, 0, g, VistaSpace.s32),
+      ),
     );
   }
 
@@ -465,59 +433,152 @@ class _CatalogScreenState extends State<CatalogScreen> {
     BuildContext context,
     VistaLayout layout,
     List<_Item> items,
-    UserStore user,
-    EdgeInsets padding,
-  ) {
+    UserStore user, {
+    required Widget header,
+    required EdgeInsets padding,
+    VoidCallback? onExitLeft,
+  }) {
     if (items.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: EmptyState(
-          icon: _group == _myList
-              ? Icons.bookmark_outline_rounded
-              : Icons.movie_outlined,
-          title: _group == _myList ? 'La tua lista è vuota' : 'Niente qui',
-          message: _group == _myList
-              ? 'Tieni premuto su un titolo (o tasto Menu) per aggiungerlo.'
-              : '',
-        ),
+      final mine = _group == _myList;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          Expanded(
+            child: EmptyState(
+              icon: mine
+                  ? Icons.bookmark_outline_rounded
+                  : Icons.movie_outlined,
+              title: mine
+                  ? 'La tua lista è vuota'
+                  : 'Niente in questa categoria',
+              message: mine
+                  ? 'Tieni premuto su un titolo (o il tasto Menu) per '
+                        'aggiungerlo.'
+                  : '',
+              action: _movies ? 'Vedi tutti i film' : 'Vedi tutte le serie',
+              onAction: () => _pick(_all),
+            ),
+          ),
+        ],
       );
     }
-    const gap = 14.0;
-    return SliverPadding(
+    return VistaPosterGrid(
+      // Una griglia per categoria e ordine: si riparte dall'inizio.
+      key: ValueKey((_group, _sort)),
+      header: header,
       padding: padding,
-      sliver: SliverLayoutBuilder(
-        builder: (context, constraints) {
-          final w = constraints.crossAxisExtent;
-          final target = layout.posterWidth;
-          final cols = ((w + gap) / (target + gap)).floor().clamp(2, 12);
-          final itemW = (w - gap * (cols - 1)) / cols;
-          return SliverGrid.builder(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: cols,
-              crossAxisSpacing: gap,
-              mainAxisSpacing: 10,
-              mainAxisExtent: itemW * 1.5 + PosterCard.textHeight,
+      onExitLeft: onExitLeft,
+      itemCount: items.length,
+      itemKey: (i) => ValueKey(items[i].key),
+      itemBuilder: (context, i, width) {
+        final it = items[i];
+        final p = user.progressOf(it.key);
+        final hero = 'catalog|${it.key}';
+        return VistaPosterCard(
+          autofocus: i == 0 && !layout.compact,
+          title: cleanListTitle(it.title),
+          image: it.poster,
+          restWidth: width,
+          heroTag: hero,
+          meta: metaLine([
+            if ((it.year ?? yearInTitle(it.title)) case final y?) '$y',
+            if (it.rating.isNotEmpty) '${it.rating}/10',
+          ]),
+          progress: p?.resumable ?? false ? p!.fraction : null,
+          saved: user.isFavorite(it.key),
+          onTap: () => _open(it, hero),
+          onLongPress: () =>
+              toggleMyList(context, it.key, cleanListTitle(it.title)),
+        );
+      },
+    );
+  }
+}
+
+/// Voce dell'elenco delle categorie: a fuoco superficie più chiara e
+/// anello, senza scala; la scelta ha il fondo e il testo forte.
+class _Category extends StatelessWidget {
+  const _Category({
+    super.key,
+    required this.focusNode,
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final FocusNode focusNode;
+  final IconData? icon;
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final fg = selected ? VistaColors.text : VistaColors.textSecondary;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      // Il fuoco non fa scorrere da solo (VistaTraversalPolicy): l'elenco
+      // porta al centro la voce a fuoco.
+      onFocusChange: (has) {
+        if (!has) return;
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.5,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : VistaMotion.rowScroll,
+          curve: VistaMotion.enter,
+        );
+      },
+      child: Semantics(
+        selected: selected,
+        child: VistaFocusable(
+          focusNode: focusNode,
+          kind: VistaFocusKind.flat,
+          radius: VistaRadius.chip,
+          fill: selected ? VistaColors.surfaceHigh : VistaColors.transparent,
+          activeFill: VistaColors.surfaceSelected,
+          onTap: onTap,
+          child: SizedBox(
+            height: VistaSize.minTouch,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: VistaSpace.s12),
+              child: Row(
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: VistaSize.iconSmall, color: fg),
+                    const SizedBox(width: VistaSpace.s12),
+                  ],
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.labelLarge?.copyWith(
+                        color: fg,
+                        fontWeight: selected ? VistaType.strong : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: VistaSpace.s8),
+                  Text(
+                    '$count',
+                    style: t.labelMedium?.copyWith(
+                      color: VistaColors.textSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            itemCount: items.length,
-            itemBuilder: (context, i) {
-              final it = items[i];
-              final p = user.progressOf(it.key);
-              return PosterCard(
-                autofocus: i == 0 && !layout.compact,
-                title: it.title,
-                image: it.poster,
-                caption: metaLine([
-                  if (it.year != null) '${it.year}',
-                  if (it.rating.isNotEmpty) '★ ${it.rating}',
-                ]),
-                progress: p?.resumable ?? false ? p!.fraction : null,
-                favorite: user.isFavorite(it.key),
-                onTap: () => _open(it),
-                onLongPress: () => toggleMyList(context, it.key, it.title),
-              );
-            },
-          );
-        },
+          ),
+        ),
       ),
     );
   }

@@ -10,7 +10,7 @@ import '../data/source_store.dart';
 import '../data/user_store.dart';
 import '../theme.dart';
 import '../widgets/channel_dialogs.dart';
-import '../widgets/focus_card.dart';
+import '../widgets/vista_focus.dart';
 import '../widgets/tv_text_field.dart';
 import 'channel_settings_screen.dart';
 import 'import_screen.dart';
@@ -134,10 +134,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
         title: Text(source.displayName),
         children: [
           if (source.canRefresh)
@@ -223,27 +219,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final picked = await showDialog<AutoRefresh>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
         title: const Text('Aggiornamento automatico'),
         children: [
           for (final a in AutoRefresh.values)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
-              child: FocusCard(
-                autofocus: a == user.autoRefresh,
-                selected: a == user.autoRefresh,
-                radius: 12,
-                focusScale: 1.0,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 11,
-                ),
-                onTap: () => Navigator.pop(ctx, a),
-                child: Text(a.label),
-              ),
+            _Choice(
+              label: a.label,
+              selected: a == user.autoRefresh,
+              onTap: () => Navigator.pop(ctx, a),
             ),
         ],
       ),
@@ -290,13 +272,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           }
 
           return AlertDialog(
-            backgroundColor: const Color(0xF0121720),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(VistaRadius.card),
-            ),
             title: const Text('Link della guida TV'),
             content: SizedBox(
-              width: 460,
+              width: VistaSize.dialog,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -308,7 +286,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: Theme.of(ctx).textTheme.bodySmall
                         ?.copyWith(color: VistaColors.textSecondary),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: VistaSpace.s16),
                   TvTextField(
                     controller: ctl,
                     hint: 'https://… link della guida XMLTV',
@@ -317,10 +295,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onSubmitted: (_) => save(),
                   ),
                   if (error != null) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: VistaSpace.s8),
                     Text(
                       error!,
-                      style: const TextStyle(color: Color(0xFFFF8A80)),
+                      style: Theme.of(ctx).textTheme.bodySmall
+                          ?.copyWith(color: VistaColors.error),
                     ),
                   ],
                 ],
@@ -362,34 +341,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final picked = await showDialog<int>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
         title: const Text('Sposta gli orari della guida'),
         children: [
           SizedBox(
-            width: 320,
-            height: 360,
-            child: ListView(
-              children: [
-                for (var h = -12; h <= 12; h++)
-                  SimpleDialogOption(
-                    onPressed: () => Navigator.pop(ctx, h),
-                    child: FocusCard(
-                      autofocus: h == current,
-                      radius: 12,
-                      focusScale: 1.0,
+            width: VistaSize.dialogNarrow,
+            height: VistaSize.dialogList,
+            child: FocusTraversalGroup(
+              policy: VistaTraversalPolicy(),
+              child: ListView(
+                children: [
+                  for (var h = -12; h <= 12; h++)
+                    _Choice(
+                      label: shiftLabel(Duration(hours: h)),
                       selected: h == current,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
                       onTap: () => Navigator.pop(ctx, h),
-                      child: Text(shiftLabel(Duration(hours: h))),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -414,10 +382,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final choice = await showDialog<String>(
         context: context,
         builder: (ctx) => SimpleDialog(
-          backgroundColor: const Color(0xF0121720),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(VistaRadius.card),
-          ),
           title: const Text('PIN'),
           children: [
             SimpleDialogOption(
@@ -472,10 +436,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
         title: Text(title),
         content: body.isEmpty ? null : Text(body),
         actions: [
@@ -511,255 +471,264 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final c = lib?.catalog;
     final g = layout.gutter;
 
-    return ListView(
-      padding: EdgeInsets.fromLTRB(g, 0, g, layout.compact ? 110 : 32),
-      children: [
-        SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: EdgeInsets.only(top: layout.compact ? 8 : 26, bottom: 18),
-            child: Text(
-              'Impostazioni',
-              style: t.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-            ),
-          ),
+    final top = layout.compact
+        ? MediaQuery.paddingOf(context).top + VistaSpace.s8
+        : (layout.safe.top > VistaSpace.s32 ? layout.safe.top : VistaSpace.s32);
+    return FocusTraversalGroup(
+      policy: VistaTraversalPolicy(),
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(
+          g,
+          top,
+          g + layout.safe.right,
+          VistaSpace.s32 + layout.safe.bottom,
         ),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 820),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const _Header('Fonti'),
-                for (final (i, src) in (lib?.sources ?? const []).indexed)
+        children: [
+          Text('Impostazioni', style: t.headlineSmall),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: VistaSize.settingsList,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _Header('Fonti'),
+                  for (final (i, src) in (lib?.sources ?? const []).indexed)
+                    _Tile(
+                      icon: src is XtreamSource
+                          ? Icons.dns_rounded
+                          : Icons.playlist_play_rounded,
+                      title: src.displayName,
+                      subtitle: [
+                        src is XtreamSource ? 'Account Xtream' : 'Lista M3U',
+                        if (src.name.isNotEmpty) src.label,
+                        if (src.userAgent.isNotEmpty)
+                          'user-agent personalizzato',
+                      ].join(' · '),
+                      autofocus: i == 0,
+                      onTap: () => _sourceActions(src),
+                    ),
                   _Tile(
-                    icon: src is XtreamSource
-                        ? Icons.dns_rounded
-                        : Icons.playlist_play_rounded,
-                    title: src.displayName,
-                    subtitle: [
-                      src is XtreamSource ? 'Account Xtream' : 'Lista M3U',
-                      if (src.name.isNotEmpty) src.label,
-                      if (src.userAgent.isNotEmpty) 'user-agent personalizzato',
-                    ].join(' · '),
-                    autofocus: i == 0,
-                    onTap: () => _sourceActions(src),
+                    icon: Icons.refresh_rounded,
+                    title: _refreshing
+                        ? 'Aggiornamento in corso…'
+                        : 'Aggiorna tutte le fonti',
+                    subtitle: c == null
+                        ? ''
+                        : '${c.live.channels.length} canali · ${c.movies.length} film · '
+                              '${c.series.length} serie',
+                    onTap: _refreshing ? null : _refreshAll,
                   ),
-                _Tile(
-                  icon: Icons.refresh_rounded,
-                  title: _refreshing
-                      ? 'Aggiornamento in corso…'
-                      : 'Aggiorna tutte le fonti',
-                  subtitle: c == null
-                      ? ''
-                      : '${c.live.channels.length} canali · ${c.movies.length} film · '
-                            '${c.series.length} serie',
-                  onTap: _refreshing ? null : _refreshAll,
-                ),
-                _Tile(
-                  icon: Icons.add_rounded,
-                  title: 'Aggiungi una lista o un account',
-                  subtitle:
-                      'I canali presenti in più fonti diventano uno solo: '
-                      'una fa da riserva all\'altra.',
-                  onTap: _addSource,
-                ),
-                ListenableBuilder(
-                  listenable: app.user,
-                  builder: (context, _) => _Tile(
-                    icon: Icons.update_rounded,
-                    title: 'Aggiornamento automatico',
-                    subtitle: app.user.autoRefresh == AutoRefresh.off
-                        ? 'Le liste si aggiornano solo a mano.'
-                        : '${app.user.autoRefresh.label} (le liste da file '
-                              'si aggiornano scegliendo di nuovo il file).',
-                    onTap: _pickAutoRefresh,
+                  _Tile(
+                    icon: Icons.add_rounded,
+                    title: 'Aggiungi una lista o un account',
+                    subtitle:
+                        'I canali presenti in più fonti diventano uno solo: '
+                        'una fa da riserva all\'altra.',
+                    onTap: _addSource,
                   ),
-                ),
-                const _Header('Servizi di streaming'),
-                ListenableBuilder(
-                  listenable: Listenable.merge([app.tmdb.client, app.user]),
-                  builder: (context, _) => _Tile(
-                    icon: Icons.subscriptions_rounded,
-                    title: 'I miei servizi',
-                    subtitle: !app.tmdb.ready
-                        ? 'Collega TMDB e scegli Netflix, Prime Video, Disney+, RaiPlay…'
-                        : (app.user.services.isEmpty
-                              ? 'Nessun servizio scelto.'
-                              : '${app.user.services.length} servizi scelti · TMDB collegato'),
+                  ListenableBuilder(
+                    listenable: app.user,
+                    builder: (context, _) => _Tile(
+                      icon: Icons.update_rounded,
+                      title: 'Aggiornamento automatico',
+                      subtitle: app.user.autoRefresh == AutoRefresh.off
+                          ? 'Le liste si aggiornano solo a mano.'
+                          : '${app.user.autoRefresh.label} (le liste da file '
+                                'si aggiornano scegliendo di nuovo il file).',
+                      onTap: _pickAutoRefresh,
+                    ),
+                  ),
+                  const _Header('Servizi di streaming'),
+                  ListenableBuilder(
+                    listenable: Listenable.merge([app.tmdb.client, app.user]),
+                    builder: (context, _) => _Tile(
+                      icon: Icons.subscriptions_rounded,
+                      title: 'I miei servizi',
+                      subtitle: !app.tmdb.ready
+                          ? 'Collega TMDB e scegli Netflix, Prime Video, Disney+, RaiPlay…'
+                          : (app.user.services.isEmpty
+                                ? 'Nessun servizio scelto.'
+                                : '${app.user.services.length} servizi scelti · TMDB collegato'),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ServicesScreen(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const _Header('TV in diretta'),
+                  _Tile(
+                    icon: Icons.tune_rounded,
+                    title: 'Gestisci canali',
+                    subtitle:
+                        'Rinomina, cambia logo, unisci o nascondi i canali.',
                     onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ServicesScreen()),
-                    ),
-                  ),
-                ),
-                const _Header('TV in diretta'),
-                _Tile(
-                  icon: Icons.tune_rounded,
-                  title: 'Gestisci canali',
-                  subtitle:
-                      'Rinomina, cambia logo, unisci o nascondi i canali.',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ChannelSettingsScreen(store: app.store),
-                    ),
-                  ),
-                ),
-                ListenableBuilder(
-                  listenable: app.user,
-                  builder: (context, _) => _Tile(
-                    icon: Icons.play_circle_outline_rounded,
-                    title: 'All\'avvio apri l\'ultimo canale',
-                    subtitle: app.user.startOnLastChannel
-                        ? 'Vista riparte dal canale che stavi guardando.'
-                        : 'Vista si apre sulla Home.',
-                    trailing: ExcludeFocus(
-                      child: Switch(
-                        value: app.user.startOnLastChannel,
-                        onChanged: app.user.setStartOnLastChannel,
+                      MaterialPageRoute(
+                        builder: (_) => ChannelSettingsScreen(store: app.store),
                       ),
                     ),
-                    onTap: () => app.user.setStartOnLastChannel(
-                      !app.user.startOnLastChannel,
+                  ),
+                  ListenableBuilder(
+                    listenable: app.user,
+                    builder: (context, _) => _Tile(
+                      icon: Icons.play_circle_outline_rounded,
+                      title: 'All\'avvio apri l\'ultimo canale',
+                      subtitle: app.user.startOnLastChannel
+                          ? 'Vista riparte dal canale che stavi guardando.'
+                          : 'Vista si apre sulla Home.',
+                      trailing: ExcludeFocus(
+                        child: Switch(
+                          value: app.user.startOnLastChannel,
+                          onChanged: app.user.setStartOnLastChannel,
+                        ),
+                      ),
+                      onTap: () => app.user.setStartOnLastChannel(
+                        !app.user.startOnLastChannel,
+                      ),
                     ),
                   ),
-                ),
-                ValueListenableBuilder<String>(
-                  valueListenable: app.epg.status,
-                  builder: (context, status, _) => _Tile(
-                    icon: Icons.calendar_view_week_rounded,
-                    title: _epgRefreshing
-                        ? 'Aggiornamento guida…'
-                        : 'Aggiorna guida TV',
-                    subtitle: status.isEmpty
-                        ? 'Guida dalla fonte e da epg.lat.'
-                        : status,
-                    onTap: _epgRefreshing ? null : _refreshEpg,
+                  ValueListenableBuilder<String>(
+                    valueListenable: app.epg.status,
+                    builder: (context, status, _) => _Tile(
+                      icon: Icons.calendar_view_week_rounded,
+                      title: _epgRefreshing
+                          ? 'Aggiornamento guida…'
+                          : 'Aggiorna guida TV',
+                      subtitle: status.isEmpty
+                          ? 'Guida dalla fonte e da epg.lat.'
+                          : status,
+                      onTap: _epgRefreshing ? null : _refreshEpg,
+                    ),
                   ),
-                ),
-                ValueListenableBuilder<Uri?>(
-                  valueListenable: app.epg.customUri,
-                  builder: (context, uri, _) => _Tile(
-                    icon: Icons.link_rounded,
-                    title: 'Link della guida TV',
-                    subtitle: uri == null
-                        ? 'Aggiungi una tua guida XMLTV, oltre a epg.lat e a quella della lista.'
-                        : 'La tua guida da ${uri.host} ha la precedenza.',
-                    onTap: _editGuideLink,
+                  ValueListenableBuilder<Uri?>(
+                    valueListenable: app.epg.customUri,
+                    builder: (context, uri, _) => _Tile(
+                      icon: Icons.link_rounded,
+                      title: 'Link della guida TV',
+                      subtitle: uri == null
+                          ? 'Aggiungi una tua guida XMLTV, oltre a epg.lat e a quella della lista.'
+                          : 'La tua guida da ${uri.host} ha la precedenza.',
+                      onTap: _editGuideLink,
+                    ),
                   ),
-                ),
-                ValueListenableBuilder<Duration>(
-                  valueListenable: app.epg.shift,
-                  builder: (context, shift, _) => _Tile(
-                    icon: Icons.schedule_rounded,
-                    title: 'Orari della guida',
-                    subtitle: shift == Duration.zero
-                        ? 'Nessuna correzione. Usala se i programmi sono in anticipo o in ritardo.'
-                        : 'Spostati di ${shiftLabel(shift)}.',
-                    onTap: _editGuideShift,
+                  ValueListenableBuilder<Duration>(
+                    valueListenable: app.epg.shift,
+                    builder: (context, shift, _) => _Tile(
+                      icon: Icons.schedule_rounded,
+                      title: 'Orari della guida',
+                      subtitle: shift == Duration.zero
+                          ? 'Nessuna correzione. Usala se i programmi sono in anticipo o in ritardo.'
+                          : 'Spostati di ${shiftLabel(shift)}.',
+                      onTap: _editGuideShift,
+                    ),
                   ),
-                ),
-                _Tile(
-                  icon: Icons.fiber_manual_record_outlined,
-                  title: 'Registrazioni',
-                  subtitle: 'Programmate e salvate: guardale o cancellale.',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const RecordingsScreen()),
-                  ),
-                ),
-                _Tile(
-                  icon: Icons.history_rounded,
-                  title: 'Svuota canali recenti',
-                  subtitle: 'Cancella l\'elenco "Visti di recente".',
-                  onTap: _clearRecent,
-                ),
-                const _Header('Backup e manutenzione'),
-                _Tile(
-                  icon: Icons.save_alt_rounded,
-                  title: 'Salva un backup',
-                  subtitle:
-                      'Preferiti, avanzamento, canali e preferenze in un file '
-                      '(senza password né chiavi).',
-                  onTap: _saveBackup,
-                ),
-                _Tile(
-                  icon: Icons.settings_backup_restore_rounded,
-                  title: 'Ripristina un backup',
-                  subtitle:
-                      'Da un file salvato con Vista, anche su un altro '
-                      'dispositivo.',
-                  onTap: _restoreBackup,
-                ),
-                FutureBuilder<int>(
-                  future: _cacheSize,
-                  builder: (context, size) => _Tile(
-                    icon: Icons.cleaning_services_outlined,
-                    title: _cleaning ? 'Pulizia in corso…' : 'Svuota cache',
-                    subtitle: size.hasData
-                        ? 'Locandine, loghi e guide TV: '
-                              '${CacheCleaner.format(size.data!)}.'
-                        : 'Locandine, loghi e guide TV salvati.',
-                    onTap: _cleaning ? null : _clearCache,
-                  ),
-                ),
-                const _Header('Controllo genitori'),
-                ListenableBuilder(
-                  listenable: app.parental,
-                  builder: (context, _) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _Tile(
-                        icon: Icons.lock_outline_rounded,
-                        title: app.parental.enabled
-                            ? 'Cambia o togli il PIN'
-                            : 'Imposta un PIN',
-                        subtitle: app.parental.enabled
-                            ? '${app.parental.lockedChannels.length} canali e '
-                                  '${app.parental.lockedGroups.length} categorie '
-                                  'protetti.'
-                            : 'Proteggi canali, categorie e impostazioni.',
-                        onTap: _editPin,
+                  _Tile(
+                    icon: Icons.fiber_manual_record_outlined,
+                    title: 'Registrazioni',
+                    subtitle: 'Programmate e salvate: guardale o cancellale.',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const RecordingsScreen(),
                       ),
-                      if (app.parental.enabled)
+                    ),
+                  ),
+                  _Tile(
+                    icon: Icons.history_rounded,
+                    title: 'Svuota canali recenti',
+                    subtitle: 'Cancella l\'elenco "Visti di recente".',
+                    onTap: _clearRecent,
+                  ),
+                  const _Header('Backup e manutenzione'),
+                  _Tile(
+                    icon: Icons.save_alt_rounded,
+                    title: 'Salva un backup',
+                    subtitle:
+                        'Preferiti, avanzamento, canali e preferenze in un file '
+                        '(senza password né chiavi).',
+                    onTap: _saveBackup,
+                  ),
+                  _Tile(
+                    icon: Icons.settings_backup_restore_rounded,
+                    title: 'Ripristina un backup',
+                    subtitle:
+                        'Da un file salvato con Vista, anche su un altro '
+                        'dispositivo.',
+                    onTap: _restoreBackup,
+                  ),
+                  FutureBuilder<int>(
+                    future: _cacheSize,
+                    builder: (context, size) => _Tile(
+                      icon: Icons.cleaning_services_outlined,
+                      title: _cleaning ? 'Pulizia in corso…' : 'Svuota cache',
+                      subtitle: size.hasData
+                          ? 'Locandine, loghi e guide TV: '
+                                '${CacheCleaner.format(size.data!)}.'
+                          : 'Locandine, loghi e guide TV salvati.',
+                      onTap: _cleaning ? null : _clearCache,
+                    ),
+                  ),
+                  const _Header('Controllo genitori'),
+                  ListenableBuilder(
+                    listenable: app.parental,
+                    builder: (context, _) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                         _Tile(
-                          icon: Icons.settings_outlined,
-                          title: 'Proteggi le impostazioni',
-                          subtitle: app.parental.locksSettings
-                              ? 'Per entrare nelle impostazioni serve il PIN.'
-                              : 'Le impostazioni sono aperte a tutti.',
-                          trailing: ExcludeFocus(
-                            child: Switch(
-                              value: app.parental.locksSettings,
-                              onChanged: (v) =>
-                                  app.parental.setSettingsLocked(v),
+                          icon: Icons.lock_outline_rounded,
+                          title: app.parental.enabled
+                              ? 'Cambia o togli il PIN'
+                              : 'Imposta un PIN',
+                          subtitle: app.parental.enabled
+                              ? '${app.parental.lockedChannels.length} canali e '
+                                    '${app.parental.lockedGroups.length} categorie '
+                                    'protetti.'
+                              : 'Proteggi canali, categorie e impostazioni.',
+                          onTap: _editPin,
+                        ),
+                        if (app.parental.enabled)
+                          _Tile(
+                            icon: Icons.settings_outlined,
+                            title: 'Proteggi le impostazioni',
+                            subtitle: app.parental.locksSettings
+                                ? 'Per entrare nelle impostazioni serve il PIN.'
+                                : 'Le impostazioni sono aperte a tutti.',
+                            trailing: ExcludeFocus(
+                              child: Switch(
+                                value: app.parental.locksSettings,
+                                onChanged: (v) =>
+                                    app.parental.setSettingsLocked(v),
+                              ),
+                            ),
+                            onTap: () => app.parental.setSettingsLocked(
+                              !app.parental.locksSettings,
                             ),
                           ),
-                          onTap: () => app.parental.setSettingsLocked(
-                            !app.parental.locksSettings,
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const _Header('Informazioni'),
-                const _Tile(
-                  icon: Icons.info_outline_rounded,
-                  title: 'Vista 0.2',
-                  subtitle:
-                      'Vista è un lettore: non fornisce né include canali, film o liste. '
-                      'Usa solo contenuti che hai il diritto di guardare.',
-                ),
-                const _Tile(
-                  icon: Icons.image_outlined,
-                  title: 'Loghi dei canali',
-                  subtitle:
-                      'Dalla lista o da tv-logos (github.com/tv-logo/tv-logos), '
-                      'licenza CC BY-NC-SA 4.0.',
-                ),
-              ],
+                  const _Header('Informazioni'),
+                  const _Tile(
+                    icon: Icons.info_outline_rounded,
+                    title: 'Vista 0.2',
+                    subtitle:
+                        'Vista è un lettore: non fornisce né include canali, film o liste. '
+                        'Usa solo contenuti che hai il diritto di guardare.',
+                  ),
+                  const _Tile(
+                    icon: Icons.image_outlined,
+                    title: 'Loghi dei canali',
+                    subtitle:
+                        'Dalla lista o da tv-logos (github.com/tv-logo/tv-logos), '
+                        'licenza CC BY-NC-SA 4.0.',
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -771,24 +740,29 @@ String shiftLabel(Duration d) {
   return '${h > 0 ? '+' : '−'}${h.abs()} h';
 }
 
+/// Titolo di una sezione dell'elenco.
 class _Header extends StatelessWidget {
   const _Header(this.text);
   final String text;
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(4, 22, 4, 10),
+    padding: const EdgeInsets.fromLTRB(
+      VistaSpace.s16,
+      VistaSpace.s32,
+      VistaSpace.s16,
+      VistaSpace.s8,
+    ),
     child: Text(
-      text.toUpperCase(),
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: VistaColors.textTertiary,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 1.2,
-      ),
+      text,
+      style: Theme.of(context).textTheme.labelLarge
+          ?.copyWith(color: VistaColors.textSecondary),
     ),
   );
 }
 
+/// Voce dell'elenco: icona, titolo e una riga di spiegazione. A riposo
+/// niente fondo; a fuoco superficie più chiara e anello, senza scala.
 class _Tile extends StatelessWidget {
   const _Tile({
     required this.icon,
@@ -812,49 +786,124 @@ class _Tile extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: FocusCard(
-        autofocus: autofocus,
-        radius: VistaRadius.card,
-        focusScale: 1.0,
-        fill: const Color(0x0DFFFFFF),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        onTap: onTap ?? () {},
-        child: Row(
-          children: [
-            Icon(icon, size: 24, color: VistaColors.textSecondary),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  if (subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: t.bodySmall?.copyWith(
-                        color: VistaColors.textSecondary,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+      padding: const EdgeInsets.only(bottom: VistaSpace.s4),
+      child: _Centered(
+        child: VistaFocusable(
+          autofocus: autofocus,
+          kind: VistaFocusKind.flat,
+          radius: VistaRadius.card,
+          fill: VistaColors.transparent,
+          activeFill: VistaColors.surfaceHigh,
+          onTap: onTap ?? () {},
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: VistaSpace.s16,
+              vertical: VistaSpace.s12,
             ),
-            if (trailing != null)
-              trailing!
-            else if (onTap != null)
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: VistaColors.textTertiary,
-              ),
-          ],
+            child: Row(
+              children: [
+                Icon(icon, color: VistaColors.textSecondary),
+                const SizedBox(width: VistaSpace.s16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: t.titleSmall),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: VistaSpace.s4),
+                        Text(
+                          subtitle,
+                          style: t.bodySmall?.copyWith(
+                            color: VistaColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: VistaSpace.s16),
+                  trailing!,
+                ] else if (onTap != null)
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: VistaColors.textSecondary,
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+/// Una scelta in una finestra di dialogo: segno di spunta su quella attuale.
+class _Choice extends StatelessWidget {
+  const _Choice({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: VistaSpace.s16,
+      vertical: VistaSpace.s4,
+    ),
+    child: _Centered(
+      child: VistaFocusable(
+        autofocus: selected,
+        kind: VistaFocusKind.flat,
+        radius: VistaRadius.chip,
+        fill: VistaColors.transparent,
+        activeFill: VistaColors.surfaceHigh,
+        onTap: onTap,
+        child: SizedBox(
+          height: VistaSize.minTouch,
+          child: Row(
+            children: [
+              SizedBox(
+                width: VistaSize.icon + VistaSpace.s24,
+                child: selected
+                    ? const Icon(Icons.check_rounded)
+                    : const SizedBox.shrink(),
+              ),
+              Expanded(child: Text(label)),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Il fuoco non fa scorrere da solo (VistaTraversalPolicy): l'elenco porta
+/// al centro la voce a fuoco, con l'anello sempre in vista.
+class _Centered extends StatelessWidget {
+  const _Centered({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onFocusChange: (has) {
+      if (!has) return;
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0.5,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : VistaMotion.rowScroll,
+        curve: VistaMotion.enter,
+      );
+    },
+    child: child,
+  );
 }

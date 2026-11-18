@@ -267,6 +267,24 @@ abstract final class VistaSize {
   /// Foto rotonda del cast (larghezza della card): wide e telefono.
   static const castPhoto = 112.0;
   static const castPhotoCompact = 88.0;
+
+  /// Stati vuoto ed errore: icona e larghezza massima del testo.
+  static const stateIcon = 48.0;
+  static const stateText = 480.0;
+
+  /// Film e Serie TV: colonna delle categorie (TV e PC).
+  static const catalogSide = 232.0;
+
+  /// Cerca: larghezza massima del campo (telefono e PC).
+  static const searchField = 720.0;
+
+  /// Impostazioni: larghezza massima dell'elenco.
+  static const settingsList = 820.0;
+
+  /// Finestre di dialogo: con un campo, strette, elenco che scorre.
+  static const dialog = 460.0;
+  static const dialogNarrow = 320.0;
+  static const dialogList = 360.0;
 }
 
 /// Fuoco: scala, anello, ombra.
@@ -338,6 +356,9 @@ abstract final class VistaMotion {
   /// Comparsa e uscita di overlay e pannelli del player (solo opacità e
   /// spostamento).
   static const overlayFade = Duration(milliseconds: 200);
+
+  /// Cerca: attesa dopo l'ultimo tasto prima di cercare.
+  static const searchDebounce = Duration(milliseconds: 250);
   static const toast = Duration(seconds: 2);
 
   static const enter = Easing.emphasizedDecelerate;

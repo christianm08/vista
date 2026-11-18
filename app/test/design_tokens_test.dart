@@ -30,6 +30,13 @@ const _migrated = [
   'lib/player/live_channel_list.dart',
   'lib/player/options_panel.dart',
   'lib/player/channel_number_entry.dart',
+  // Fase 6: Ricerca, Film e Serie, Scopri, Impostazioni, stati comuni.
+  'lib/screens/search_screen.dart',
+  'lib/screens/catalog_screen.dart',
+  'lib/screens/discover_screen.dart',
+  'lib/screens/settings_screen.dart',
+  'lib/screens/shell.dart',
+  'lib/widgets/vista_grid.dart',
 ];
 
 /// Valori scritti a mano che devono stare solo in lib/tokens.dart.

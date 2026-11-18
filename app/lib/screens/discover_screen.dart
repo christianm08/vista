@@ -4,10 +4,10 @@ import 'package:vista_resolver/vista_resolver.dart';
 import '../app_scope.dart';
 import '../data/tmdb_store.dart';
 import '../theme.dart';
-import '../widgets/availability.dart';
-import '../widgets/focus_card.dart';
-import '../widgets/poster_card.dart';
 import '../widgets/tmdb_row.dart';
+import '../widgets/vista_controls.dart';
+import '../widgets/vista_grid.dart';
+import '../widgets/vista_row.dart';
 import 'services_screen.dart';
 import 'shell.dart';
 
@@ -59,29 +59,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  Widget _setup(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const EmptyState(
-            icon: Icons.explore_outlined,
-            title: 'Tutti i tuoi servizi in un posto',
-            message:
-                'Scegli i servizi di streaming che hai (Netflix, Prime Video, Disney+, '
-                'RaiPlay…) e Vista ti mostra cosa c\'è e dove guardarlo.\n'
-                'Serve una chiave gratuita di TMDB, il database di film e serie.',
-          ),
-          FilledButton.icon(
-            autofocus: true,
-            onPressed: _openServices,
-            icon: const Icon(Icons.tune_rounded),
-            label: const Text('Configura'),
-          ),
-        ],
-      ),
-    ),
+  Widget _setup(BuildContext context) => EmptyState(
+    icon: Icons.explore_outlined,
+    title: 'Tutti i tuoi servizi in un posto',
+    message:
+        'Scegli i servizi di streaming che hai (Netflix, Prime Video, '
+        'Disney+, RaiPlay…) e Vista ti mostra cosa c\'è e dove guardarlo. '
+        'Serve una chiave gratuita di TMDB, il database di film e serie.',
+    action: 'Configura',
+    onAction: _openServices,
+    autofocus: true,
   );
 
   List<int> _ids(AppScope app) =>
@@ -122,7 +109,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     ),
   );
 
-  Widget _row(String title, String id, PageLoader loader) => TmdbRow(
+  Widget _row(String title, String id, PageLoader loader) => TmdbVistaRow(
     key: ValueKey(
       '$id|${_kind.name}|$_service|${AppScope.of(context).user.services.join(',')}',
     ),
@@ -149,173 +136,181 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final where = serviceName != null
         ? 'su $serviceName'
         : (ids.isEmpty ? 'in Italia' : 'sui tuoi servizi');
+    final top = layout.compact
+        ? MediaQuery.paddingOf(context).top + VistaSpace.s8
+        : (layout.safe.top > VistaSpace.s32 ? layout.safe.top : VistaSpace.s32);
 
-    final rows = <Widget>[
-      _row(
-        'Popolari $where',
-        'pop',
-        (p) => _discover(tmdb, providers: ids, page: p),
+    final header = Padding(
+      padding: EdgeInsets.fromLTRB(
+        g,
+        top,
+        layout.compact ? VistaSpace.s8 : g + layout.safe.right,
+        0,
       ),
-      _row(
-        'Novità $where',
-        'new',
-        (p) => _discover(tmdb, providers: ids, recent: true, page: p),
-      ),
-      _row(
-        'I più votati $where',
-        'top',
-        (p) => _discover(
-          tmdb,
-          providers: ids,
-          sortBy: 'vote_average.desc',
-          page: p,
-        ),
-      ),
-      if (_service == null && mine.length > 1)
-        for (final s in mine)
-          _row(
-            'Su ${s.name}',
-            'svc${s.id}',
-            (p) => _discover(
-              tmdb,
-              providers: withVariants([s.id], all).toList(),
-              page: p,
-            ),
-          ),
-      if (_service == null)
-        TmdbRow(
-          key: const ValueKey('trending'),
-          title: 'Di tendenza questa settimana',
-          load: () async => (await tmdb.trending()).results,
-        ),
-    ];
-
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(g, layout.compact ? 8 : 24, g, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Scopri',
-                          style: t.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          mine.isEmpty
-                              ? 'Scegli i tuoi servizi per vedere solo quello che puoi guardare'
-                              : 'Film e serie dei tuoi ${mine.length} servizi',
-                          style: t.bodyMedium?.copyWith(
-                            color: VistaColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _openServices,
-                    icon: const Icon(Icons.tune_rounded, size: 18),
-                    label: Text(layout.compact ? 'Servizi' : 'I miei servizi'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 58,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: g, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final k in _Kind.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FocusCard(
-                      autofocus: k == _Kind.all && !layout.compact,
-                      radius: 999,
-                      focusScale: 1.0,
-                      selected: _kind == k,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 9,
-                      ),
-                      onTap: () => setState(() => _kind = k),
-                      child: Text(
-                        k.label,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
+                Text('Scopri', style: t.headlineSmall),
+                const SizedBox(height: VistaSpace.s4),
+                Text(
+                  mine.isEmpty
+                      ? 'Scegli i tuoi servizi per vedere solo quello che '
+                            'puoi guardare.'
+                      : 'Film e serie dei tuoi ${mine.length} servizi.',
+                  style: t.bodyMedium?.copyWith(
+                    color: VistaColors.textSecondary,
                   ),
-                if (mine.isNotEmpty) ...[
-                  const SizedBox(width: 10),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FocusCard(
-                      radius: 999,
-                      focusScale: 1.0,
-                      selected: _service == null,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 9,
-                      ),
-                      onTap: () => setState(() => _service = null),
-                      child: const Text(
-                        'Tutti i miei',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                  for (final p in mine)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FocusCard(
-                        radius: 999,
-                        focusScale: 1.0,
-                        selected: _service == p.id,
-                        padding: const EdgeInsets.fromLTRB(5, 4, 14, 4),
-                        onTap: () => setState(() => _service = p.id),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ProviderLogo(p, size: 30),
-                            const SizedBox(width: 8),
-                            Text(
-                              p.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
+                ),
               ],
             ),
           ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 10)),
-        SliverList.list(children: rows),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(g, 4, g, layout.compact ? 110 : 32),
-            child: Text(
-              'Dati di film e serie: TMDB. Disponibilità sui servizi: JustWatch.',
-              style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+          if (layout.compact)
+            VistaIconButton(
+              icon: Icons.tune_rounded,
+              tooltip: 'I miei servizi',
+              onPressed: _openServices,
+            )
+          else
+            VistaButton.tonal(
+              icon: Icons.tune_rounded,
+              label: 'I miei servizi',
+              onPressed: _openServices,
             ),
+        ],
+      ),
+    );
+
+    final chips = <Widget>[
+      for (final k in _Kind.values)
+        VistaChip(
+          key: ValueKey(k),
+          label: k.label,
+          autofocus: k == _Kind.all && !layout.compact,
+          selected: _kind == k,
+          onSelected: () => setState(() => _kind = k),
+        ),
+      if (mine.isNotEmpty) ...[
+        const SizedBox(width: VistaSpace.s8),
+        VistaChip(
+          key: const ValueKey('all-mine'),
+          label: 'Tutti i miei',
+          selected: _service == null,
+          onSelected: () => setState(() => _service = null),
+        ),
+        for (final p in mine)
+          VistaChip(
+            key: ValueKey(p.id),
+            label: p.name,
+            selected: _service == p.id,
+            onSelected: () => setState(() => _service = p.id),
+          ),
+      ],
+    ];
+
+    return VistaRowsPage(
+      rows: [
+        Column(
+          key: const ValueKey('header'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            _ChipRow(chips: chips),
+          ],
+        ),
+        _row(
+          'Popolari $where',
+          'pop',
+          (p) => _discover(tmdb, providers: ids, page: p),
+        ),
+        _row(
+          'Novità $where',
+          'new',
+          (p) => _discover(tmdb, providers: ids, recent: true, page: p),
+        ),
+        _row(
+          'I più votati $where',
+          'top',
+          (p) => _discover(
+            tmdb,
+            providers: ids,
+            sortBy: 'vote_average.desc',
+            page: p,
+          ),
+        ),
+        if (_service == null && mine.length > 1)
+          for (final s in mine)
+            _row(
+              'Su ${s.name}',
+              'svc${s.id}',
+              (p) => _discover(
+                tmdb,
+                providers: withVariants([s.id], all).toList(),
+                page: p,
+              ),
+            ),
+        if (_service == null)
+          TmdbVistaRow(
+            key: const ValueKey('trending'),
+            title: 'Di tendenza questa settimana',
+            load: () async => (await tmdb.trending()).results,
+          ),
+        Padding(
+          key: const ValueKey('credits'),
+          padding: EdgeInsets.symmetric(horizontal: g),
+          child: Text(
+            'Dati di film e serie: TMDB. Disponibilità sui servizi: '
+            'JustWatch.',
+            style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Fila di chip che scorre col fuoco, con lo spazio per l'anello attorno.
+class _ChipRow extends StatelessWidget {
+  const _ChipRow({required this.chips});
+  final List<Widget> chips;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = VistaLayout.of(context);
+    final reserve = layout.rowReserve;
+    return SizedBox(
+      height: layout.chipHeight + reserve * 2,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.fromLTRB(
+          layout.gutter,
+          reserve,
+          layout.gutter + layout.safe.right,
+          reserve,
+        ),
+        itemCount: chips.length,
+        separatorBuilder: (_, _) => const SizedBox(width: VistaSpace.s8),
+        // Il fuoco non fa scorrere da solo (VistaTraversalPolicy): la fila
+        // porta al centro il chip a fuoco.
+        itemBuilder: (context, i) => Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onFocusChange: (has) {
+            if (!has) return;
+            Scrollable.ensureVisible(
+              context,
+              alignment: 0.5,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : VistaMotion.rowScroll,
+              curve: VistaMotion.enter,
+            );
+          },
+          child: Center(child: chips[i]),
+        ),
+      ),
     );
   }
 }
@@ -370,90 +365,81 @@ class _TmdbGridScreenState extends State<TmdbGridScreen> {
     final layout = VistaLayout.of(context);
     final t = Theme.of(context).textTheme;
     final g = layout.gutter;
-    const gap = 14.0;
+    final safe = layout.compact ? MediaQuery.paddingOf(context) : layout.safe;
+    final top = layout.compact
+        ? safe.top + VistaSpace.s8
+        : (safe.top > VistaSpace.s32 ? safe.top : VistaSpace.s32);
+    final padding = EdgeInsets.fromLTRB(
+      g + safe.left,
+      0,
+      g + safe.right,
+      VistaSpace.s32 + safe.bottom,
+    );
+    final Widget body;
+    if (_items.isEmpty && _error != null) {
+      body = EmptyState.error(
+        title: 'Elenco non caricato',
+        message: _error!,
+        onAction: _next,
+        autofocus: true,
+      );
+    } else if (_items.isEmpty) {
+      body = _loading || _more
+          ? VistaPosterGridSkeleton(padding: padding)
+          : const EmptyState(
+              icon: Icons.movie_outlined,
+              title: 'Nessun titolo',
+              message: 'Per ora qui non c\'è niente da guardare.',
+            );
+    } else {
+      body = VistaPosterGrid(
+        padding: padding,
+        itemCount: _items.length,
+        itemKey: (i) => ValueKey(_items[i].key),
+        onNearEnd: _more && !_loading && _error == null ? _next : null,
+        itemBuilder: (context, i, width) =>
+            tmdbPosterCard(context, _items[i], width: width, autofocus: i == 0),
+        footer: _error == null
+            ? null
+            : EmptyState.error(
+                title: 'Altri titoli non caricati',
+                message: _error!,
+                onAction: _next,
+              ),
+      );
+    }
     return Scaffold(
-      body: NotificationListener<ScrollNotification>(
-        onNotification: (n) {
-          if (n.metrics.pixels > n.metrics.maxScrollExtent - 900) _next();
-          return false;
-        },
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(g - 8, 12, g, 12),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        tooltip: 'Indietro',
-                        onPressed: () => Navigator.of(context).maybePop(),
-                        icon: const Icon(Icons.arrow_back_rounded),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          widget.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              g + safe.left - VistaSpace.s8,
+              top,
+              g + safe.right,
+              0,
+            ),
+            child: Row(
+              children: [
+                VistaIconButton(
+                  icon: Icons.arrow_back_rounded,
+                  tooltip: 'Indietro',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+                const SizedBox(width: VistaSpace.s8),
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.headlineSmall,
                   ),
                 ),
-              ),
+              ],
             ),
-            SliverPadding(
-              padding: EdgeInsets.symmetric(horizontal: g),
-              sliver: SliverLayoutBuilder(
-                builder: (context, c) {
-                  final w = c.crossAxisExtent;
-                  final cols = ((w + gap) / (layout.posterWidth + gap))
-                      .floor()
-                      .clamp(2, 12);
-                  final itemW = (w - gap * (cols - 1)) / cols;
-                  return SliverGrid.builder(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: cols,
-                      crossAxisSpacing: gap,
-                      mainAxisSpacing: 10,
-                      mainAxisExtent: itemW * 1.5 + PosterCard.textHeight,
-                    ),
-                    itemCount: _items.length,
-                    itemBuilder: (context, i) {
-                      // Col telecomando la pagina successiva arriva prima del fondo.
-                      if (i > _items.length - cols * 2 && _more && !_loading) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) _next();
-                        });
-                      }
-                      return TmdbPoster(_items[i], autofocus: i == 0);
-                    },
-                  );
-                },
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: _error != null
-                      ? Text(
-                          _error!,
-                          style: const TextStyle(color: Color(0xFFFF9C8A)),
-                        )
-                      : (_loading
-                            ? const CircularProgressIndicator()
-                            : const SizedBox.shrink()),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+          Expanded(child: body),
+        ],
       ),
     );
   }
