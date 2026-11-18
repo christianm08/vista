@@ -26,6 +26,22 @@ void main() {
     expect(cleanGroupName('IT: ITALY [4K-Q]/[4K-Q]'), 'Italy');
   });
 
+  test('chip delle categorie: nomi uguali dopo la pulizia restano grezzi', () {
+    expect(
+      groupLabels(
+        ['*', 'PREFERITI', 'IT: SPORT [1080p]', 'IT: SPORT [4K]', 'IT: DAZN'],
+        fixed: {'*': 'Preferiti'},
+      ),
+      {
+        '*': 'Preferiti',
+        'PREFERITI': 'PREFERITI',
+        'IT: SPORT [1080p]': 'IT: SPORT [1080p]',
+        'IT: SPORT [4K]': 'IT: SPORT [4K]',
+        'IT: DAZN': 'Dazn',
+      },
+    );
+  });
+
   test('il titolo TMDB solo se si legge nella stessa scrittura', () {
     TmdbTitle t(String title) =>
         TmdbTitle(type: MediaType.movie, id: 1, title: title);

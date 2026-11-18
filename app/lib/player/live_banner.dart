@@ -218,7 +218,7 @@ class LiveBanner extends StatelessWidget {
                           ),
                           for (var i = 0; i < picker.streams.length; i++)
                             _Chip(
-                              _streamLabel(picker.streams, i),
+                              streamLabel(picker.streams, i),
                               selected: !picker.auto && picker.index == i,
                               onTap: () => onPickStream(i),
                             ),
@@ -266,7 +266,7 @@ class _Chip extends StatelessWidget {
 
 /// Etichetta del flusso [i]: la qualità, numerata quando più flussi hanno la
 /// stessa ("4K · 1", "4K · 2").
-String _streamLabel(List<ChannelStream> streams, int i) {
+String streamLabel(List<ChannelStream> streams, int i) {
   final label = streams[i].quality.label;
   final same = [
     for (var j = 0; j < streams.length; j++)

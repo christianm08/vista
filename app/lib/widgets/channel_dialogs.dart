@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'focus_card.dart';
+import 'list_titles.dart';
 import 'tv_text_field.dart';
 
 ShapeBorder get _shape => RoundedRectangleBorder(
@@ -102,6 +103,7 @@ Future<String?> pickGroup(
   bool canReset = false,
   String title = 'Sposta in categoria',
 }) async {
+  final names = groupLabels(groups);
   final choice = await showDialog<String>(
     context: context,
     builder: (ctx) => SimpleDialog(
@@ -130,7 +132,7 @@ Future<String?> pickGroup(
               for (final g in groups)
                 _option(
                   ctx,
-                  label: g.isEmpty ? 'Senza categoria' : g,
+                  label: g.isEmpty ? 'Senza categoria' : names[g]!,
                   value: g,
                   selected: g == current,
                 ),

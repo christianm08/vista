@@ -10,6 +10,7 @@ import '../widgets/channel_dialogs.dart';
 import '../widgets/channel_logo.dart';
 import '../widgets/channel_tile.dart';
 import '../widgets/focus_card.dart';
+import '../widgets/list_titles.dart';
 import '../widgets/tv_text_field.dart';
 
 /// Canali della fonte corrente, letti da [SourceStore.library] così le
@@ -74,6 +75,8 @@ class ChannelSettingsScreen extends StatefulWidget {
 }
 
 class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
+  /// Nomi delle categorie come si leggono (vedi [groupLabels]).
+  var _names = <String, String>{};
   final _search = TextEditingController();
   final _channelScroll = ScrollController();
   String _category = _allChannels;
@@ -147,8 +150,9 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
   Future<void> _setGroupHidden(String group, bool hide) => _save(
     (p) => p.setGroupHidden(group, hide),
     hide
-        ? 'Categoria "$group" nascosta, anche per i canali che arriveranno.'
-        : 'Categoria "$group" di nuovo visibile.',
+        ? 'Categoria "${_label(group)}" nascosta, anche per i canali che '
+              'arriveranno.'
+        : 'Categoria "${_label(group)}" di nuovo visibile.',
   );
 
   /// Protegge col PIN (o libera) la categoria scelta. Togliere un blocco
@@ -167,8 +171,8 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
     if (mounted) setState(() {});
     _toast(
       locked
-          ? 'Categoria "$group" non più protetta.'
-          : 'Categoria "$group" protetta dal PIN.',
+          ? 'Categoria "${_label(group)}" non più protetta.'
+          : 'Categoria "${_label(group)}" protetta dal PIN.',
     );
   }
 
@@ -203,7 +207,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
     _allChannels => 'Tutti i canali',
     _hiddenChannels => 'Nascosti',
     '' => 'Senza categoria',
-    final g => g,
+    final g => _names[g] ?? cleanGroupName(g),
   };
 
   /// Canali della categoria scelta (non filtrati dalla ricerca).
@@ -295,6 +299,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
             builder: (context, _, _) {
               final all = _channelsOf(_store);
               final groups = _groups(all);
+              _names = groupLabels([for (final (g, _) in groups) g]);
               final hiddenCount = all.where((c) => c.hidden).length;
               // La categoria scelta può sparire (lista aggiornata, nessun
               // canale più nascosto): si torna a "Tutti".
@@ -709,7 +714,7 @@ class _ChannelRow extends StatelessWidget {
       c.sourceNames.length == 1 ? '1 voce' : '${c.sourceNames.length} voci',
       if (mergedCount > 0)
         mergedCount == 1 ? '1 canale unito' : '$mergedCount canali uniti',
-      c.group,
+      cleanGroupName(c.group),
     ];
     return FocusCard(
       autofocus: autofocus,
@@ -986,7 +991,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
                   c.streams.length == 1
                       ? '1 flusso'
                       : '${c.streams.length} flussi',
-                  c.group,
+                  cleanGroupName(c.group),
                 ].join(' · '),
                 style: t.bodyMedium?.copyWith(color: VistaColors.textSecondary),
               ),
@@ -1021,7 +1026,8 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
   List<Widget> _visibilitySection(Channel c) => c.groupHidden
       ? [
           Text(
-            'Nascosto perché è nascosta la categoria "${c.group}".',
+            'Nascosto perché è nascosta la categoria '
+            '"${cleanGroupName(c.group)}".',
             style: Theme.of(context).textTheme.bodySmall
                 ?.copyWith(color: VistaColors.textSecondary),
           ),
@@ -1034,7 +1040,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
                   ? null
                   : () => _save(
                       (p) => p.setGroupHidden(c.group, false),
-                      'Categoria "${c.group}" di nuovo visibile.',
+                      'Categoria "${cleanGroupName(c.group)}" di nuovo visibile.',
                     ),
               child: const Text('Mostra la categoria'),
             ),
@@ -1121,7 +1127,8 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
     return [
       Text(
         byGroup
-            ? 'Protetto perché è protetta la categoria "${c.group}".'
+            ? 'Protetto perché è protetta la categoria '
+                  '"${cleanGroupName(c.group)}".'
             : (own ? 'Per guardarlo serve il PIN.' : 'Chiunque può guardarlo.'),
         style: Theme.of(context).textTheme.bodySmall
             ?.copyWith(color: VistaColors.textSecondary),
@@ -1145,7 +1152,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
   List<Widget> _placeSection(Channel c) => [
     Text(
       'Canale ${c.number}${c.renumbered ? ' (numero scelto da te)' : ''} · '
-      'categoria "${c.group.isEmpty ? 'Senza categoria' : c.group}"',
+      'categoria "${c.group.isEmpty ? 'Senza categoria' : cleanGroupName(c.group)}"',
       style: Theme.of(context).textTheme.bodySmall
           ?.copyWith(color: VistaColors.textSecondary),
     ),

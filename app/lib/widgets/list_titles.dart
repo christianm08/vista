@@ -144,6 +144,24 @@ String cleanGroupName(String raw) {
   return s[0] + s.substring(1).toLowerCase();
 }
 
+/// Etichette dei chip delle categorie [groups]: i nomi ripuliti, ma se due
+/// si leggono uguali ("Sport [1080p]" e "Sport [4K]") resta il nome della
+/// lista. Le categorie in [fixed] hanno sempre la loro etichetta.
+Map<String, String> groupLabels(
+  List<String> groups, {
+  Map<String, String> fixed = const {},
+}) {
+  final clean = {for (final g in groups) g: fixed[g] ?? cleanGroupName(g)};
+  final seen = <String, int>{};
+  for (final l in clean.values) {
+    seen.update(l, (n) => n + 1, ifAbsent: () => 1);
+  }
+  return {
+    for (final MapEntry(:key, :value) in clean.entries)
+      key: fixed.containsKey(key) || seen[value] == 1 ? value : key,
+  };
+}
+
 /// Il titolo da mostrare per un elemento della lista: quello di TMDB [t] se
 /// c'è l'abbinamento, altrimenti quello della lista ripulito.
 ///

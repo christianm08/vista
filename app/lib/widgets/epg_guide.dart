@@ -625,52 +625,69 @@ class _Cell extends StatelessWidget {
         activeFill: VistaColors.surfaceSelected,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(VistaRadius.chip),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: VistaSpace.s12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  softWrap: false,
-                  style: t.labelLarge?.copyWith(
-                    fontWeight: VistaType.strong,
-                    color: muted ? VistaColors.textSecondary : VistaColors.text,
-                  ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: VistaSpace.s12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: t.labelLarge?.copyWith(
+                        fontWeight: VistaType.strong,
+                        color: muted
+                            ? VistaColors.textSecondary
+                            : VistaColors.text,
+                      ),
+                    ),
+                    if (time != null)
+                      LayoutBuilder(
+                        builder: (context, box) {
+                          final style = t.bodySmall?.copyWith(
+                            color: active
+                                ? VistaColors.textBody
+                                : VistaColors.textSecondary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          );
+                          // Nelle celle strette solo l'inizio: un orario
+                          // tagliato a metà ("20:45 – 2") non si legge.
+                          final full = TextPainter(
+                            text: TextSpan(text: time, style: style),
+                            maxLines: 1,
+                            textDirection: TextDirection.ltr,
+                            textScaler: MediaQuery.textScalerOf(context),
+                          )..layout();
+                          final fits = full.width <= box.maxWidth;
+                          full.dispose();
+                          return Text(
+                            fits ? time! : shortTime ?? time!,
+                            maxLines: 1,
+                            overflow: TextOverflow.clip,
+                            softWrap: false,
+                            style: style,
+                          );
+                        },
+                      ),
+                  ],
                 ),
-                if (time != null)
-                  LayoutBuilder(
-                    builder: (context, box) {
-                      final style = t.bodySmall?.copyWith(
-                        color: active
-                            ? VistaColors.textBody
-                            : VistaColors.textSecondary,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      );
-                      // Nelle celle strette solo l'inizio: un orario
-                      // tagliato a metà ("20:45 – 2") non si legge.
-                      final full = TextPainter(
-                        text: TextSpan(text: time, style: style),
-                        maxLines: 1,
-                        textDirection: TextDirection.ltr,
-                        textScaler: MediaQuery.textScalerOf(context),
-                      )..layout();
-                      final fits = full.width <= box.maxWidth;
-                      full.dispose();
-                      return Text(
-                        fits ? time! : shortTime ?? time!,
-                        maxLines: 1,
-                        overflow: TextOverflow.clip,
-                        softWrap: false,
-                        style: style,
-                      );
-                    },
-                  ),
-              ],
-            ),
+              ),
+              // Riga scelta mentre il fuoco è altrove (sui chip): una tacca
+              // accent la distingue dalle altre celle in onda.
+              if (highlighted)
+                const Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: VistaSize.guideNowLine,
+                  child: ColoredBox(color: VistaColors.accent),
+                ),
+            ],
           ),
         ),
       ),

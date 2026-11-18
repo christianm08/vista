@@ -1,11 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vista/player/live_banner.dart';
 import 'package:vista/player/stream_picker.dart';
 import 'package:vista_resolver/vista_resolver.dart';
 
 List<ChannelStream> streams(List<Quality> qs) => [
-      for (var i = 0; i < qs.length; i++)
-        ChannelStream(quality: qs[i], url: 'http://s/$i', sourceName: 'S$i'),
-    ];
+  for (var i = 0; i < qs.length; i++)
+    ChannelStream(quality: qs[i], url: 'http://s/$i', sourceName: 'S$i'),
+];
 
 void main() {
   test('Auto parte dal migliore e scala ai successivi', () {
@@ -41,5 +42,14 @@ void main() {
     expect(qualityFromHeight(720), 'HD');
     expect(qualityFromHeight(576), 'SD');
     expect(qualityFromHeight(null), '');
+  });
+
+  test('qualità ripetute numerate, le altre senza numero', () {
+    final s = streams([Quality.uhd4k, Quality.fhd, Quality.uhd4k]);
+    final k = Quality.uhd4k.label;
+    expect(
+      [for (var i = 0; i < s.length; i++) streamLabel(s, i)],
+      ['$k · 1', Quality.fhd.label, '$k · 2'],
+    );
   });
 }

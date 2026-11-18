@@ -23,11 +23,10 @@ const _all = '\u0000tutti';
 const _favorites = '\u0000preferiti';
 const _recent = '\u0000recenti';
 
-String _groupLabel(String g) => switch (g) {
-  _all => 'Tutti i canali',
-  _favorites => 'Preferiti',
-  _recent => 'Visti di recente',
-  _ => cleanGroupName(g),
+const _specialLabels = {
+  _all: 'Tutti i canali',
+  _favorites: 'Preferiti',
+  _recent: 'Visti di recente',
 };
 
 /// TV in diretta. Su TV e PC: anteprima del canale a fuoco in alto, filtri
@@ -558,13 +557,9 @@ class _LiveScreenState extends State<LiveScreen> {
 
   /// Filtri per categoria: una fila di chip che scorre col fuoco.
   Widget _filters(BuildContext context, List<(String, int)> groups) {
-    // Due categorie che ripulite si leggono uguali ("Sport [1080p]" e
-    // "Sport [4K]") mostrano il nome della lista.
-    final seen = <String, int>{};
-    for (final (g, _) in groups) {
-      seen.update(_groupLabel(g), (n) => n + 1, ifAbsent: () => 1);
-    }
-    String label(String g) => seen[_groupLabel(g)]! > 1 ? g : _groupLabel(g);
+    final names = groupLabels([
+      for (final (g, _) in groups) g,
+    ], fixed: _specialLabels);
     final layout = VistaLayout.of(context);
     // Sopra e sotto, spazio per l'anello del chip a fuoco.
     const reserve = VistaSpace.s8;
@@ -604,7 +599,7 @@ class _LiveScreenState extends State<LiveScreen> {
               },
               child: VistaChip(
                 focusNode: _chipNode(g),
-                label: layout.compact ? '${label(g)}  $n' : label(g),
+                label: layout.compact ? '${names[g]}  $n' : names[g]!,
                 selected: g == _group,
                 onSelected: () => _pick(g),
               ),
