@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vista/theme.dart';
@@ -6,7 +7,8 @@ import 'package:vista/widgets/vista_cards.dart';
 import 'package:vista/widgets/vista_focus.dart';
 import 'package:vista/widgets/vista_row.dart';
 
-/// Pagina di prova: [rows] righe di [count] poster, il primo a fuoco.
+/// Pagina di prova: [rows] righe di [count] poster, il primo a fuoco. Le
+/// righe iniziano dove le mette la shell, accanto alla barra laterale chiusa.
 Widget _page({int rows = 1, int count = 50, bool reduce = false}) {
   return MaterialApp(
     builder: (context, child) => MediaQuery(
@@ -16,27 +18,35 @@ Widget _page({int rows = 1, int count = 50, bool reduce = false}) {
     home: Scaffold(
       body: Builder(
         builder: (context) {
-          final w = VistaLayout.of(context).posterWidth;
+          final layout = VistaLayout.of(context);
+          final w = layout.posterWidth;
           final h = VistaPosterCard.heightFor(context, w, true);
-          return VistaRowsPage(
-            rows: [
-              for (var r = 0; r < rows; r++)
-                VistaRow(
-                  key: ValueKey('row-$r'),
-                  title: 'Riga $r',
-                  itemCount: count,
-                  itemKey: (i) => ValueKey('r$r-i$i'),
-                  itemWidth: w,
-                  itemHeight: h,
-                  itemBuilder: (context, i) => VistaPosterCard(
-                    title: 'Titolo $r/$i',
-                    image: '',
-                    restWidth: w,
-                    autofocus: r == 0 && i == 0,
-                    onTap: () {},
+          return Padding(
+            // Come le schermate: le righe partono sotto l'area sicura.
+            padding: EdgeInsets.only(
+              left: layout.contentLeft,
+              top: layout.safe.top,
+            ),
+            child: VistaRowsPage(
+              rows: [
+                for (var r = 0; r < rows; r++)
+                  VistaRow(
+                    key: ValueKey('row-$r'),
+                    title: 'Riga $r',
+                    itemCount: count,
+                    itemKey: (i) => ValueKey('r$r-i$i'),
+                    itemWidth: w,
+                    itemHeight: h,
+                    itemBuilder: (context, i) => VistaPosterCard(
+                      title: 'Titolo $r/$i',
+                      image: '',
+                      restWidth: w,
+                      autofocus: r == 0 && i == 0,
+                      onTap: () {},
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           );
         },
       ),
@@ -90,6 +100,40 @@ Rect _ringRect(WidgetTester tester) {
   return scaled.inflate(VistaFocus.ringGap + VistaFocus.ringWidth);
 }
 
+/// L'anello sta dentro l'area sicura (5% per lato su TV) e, in orizzontale,
+/// dentro il ritaglio della riga che contiene l'elemento a fuoco.
+void _expectRingInside(WidgetTester tester, Rect ring) {
+  final context = tester.element(find.byType(VistaRow).first);
+  final layout = VistaLayout.of(context);
+  final safe = layout.safe.deflateRect(
+    Offset.zero & Size(layout.width, layout.height),
+  );
+  final where = 'anello $ring, area sicura $safe';
+  expect(safe.contains(ring.topLeft), isTrue, reason: where);
+  expect(safe.contains(ring.bottomRight), isTrue, reason: where);
+
+  // Il primo ritaglio con un clipper sopra l'elemento è quello della riga.
+  final focused = _effects(tester).singleWhere((e) => e.widget.active);
+  RenderObject? node = focused.context.findRenderObject();
+  while (node is! RenderClipRect || node.clipper == null) {
+    node = node!.parent;
+  }
+  final row = node;
+  final clip = row.clipper!
+      .getClip(row.size)
+      .shift(row.localToGlobal(Offset.zero));
+  expect(
+    ring.left,
+    greaterThanOrEqualTo(clip.left),
+    reason: 'tagliato a sinistra',
+  );
+  expect(
+    ring.right,
+    lessThanOrEqualTo(clip.right),
+    reason: 'tagliato a destra',
+  );
+}
+
 void main() {
   setUp(() {
     final view =
@@ -123,15 +167,16 @@ void main() {
     expect(_focusedKey(), 'r0-i10');
 
     final ring = _ringRect(tester);
-    final screen = Offset.zero & const Size(1280, 720);
-    expect(screen.contains(ring.topLeft), isTrue);
-    expect(screen.contains(ring.bottomRight), isTrue);
+    _expectRingInside(tester, ring);
 
     // L'immagine a riposo inizia esattamente al margine (aggancio).
     final layout = VistaLayout.of(tester.element(find.byType(VistaRow)));
     final focused = _effects(tester).singleWhere((e) => e.widget.active);
     final box = focused.context.findRenderObject()! as RenderBox;
-    expect(box.localToGlobal(Offset.zero).dx, layout.gutter);
+    expect(
+      box.localToGlobal(Offset.zero).dx,
+      layout.contentLeft + layout.gutter,
+    );
 
     // Le vicine non entrano nell'anello.
     for (final e in _effects(tester).where((e) => !e.widget.active)) {
@@ -139,6 +184,41 @@ void main() {
       final r = b.localToGlobal(Offset.zero) & b.size;
       expect(r.overlaps(ring), isFalse, reason: 'vicina dentro l\'anello');
     }
+  });
+
+  testWidgets('su TV il fuoco resta nell\'area sicura, anche a fine riga', (
+    tester,
+  ) async {
+    Device.isTv = true;
+    addTearDown(() => Device.isTv = false);
+    await tester.pumpWidget(_page());
+    await tester.pumpAndSettle();
+    await _hold(tester, LogicalKeyboardKey.arrowRight, 10);
+    await tester.pumpAndSettle();
+    _expectRingInside(tester, _ringRect(tester));
+
+    await _hold(tester, LogicalKeyboardKey.arrowRight, 150);
+    await tester.pumpAndSettle();
+    expect(_focusedKey(), 'r0-i49');
+    _expectRingInside(tester, _ringRect(tester));
+  });
+
+  testWidgets('giù e su tenuti premuti 5 s: a fine corsa tutto a riposo', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_page(rows: 50, count: 10));
+    await tester.pumpAndSettle();
+    await _hold(tester, LogicalKeyboardKey.arrowDown, 150);
+    await tester.pumpAndSettle();
+    expect(_focusedKey(), startsWith('r49-'));
+    _expectOneFocusedRestAtRest(tester);
+    _expectRingInside(tester, _ringRect(tester));
+
+    await _hold(tester, LogicalKeyboardKey.arrowUp, 150);
+    await tester.pumpAndSettle();
+    expect(_focusedKey(), startsWith('r0-'));
+    _expectOneFocusedRestAtRest(tester);
+    _expectRingInside(tester, _ringRect(tester));
   });
 
   testWidgets('su e giù tra le righe: nessun elemento resta ingrandito', (

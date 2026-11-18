@@ -180,7 +180,7 @@ class _VistaRowState extends State<VistaRow> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: g),
+          padding: EdgeInsets.only(left: g, right: g + layout.safe.right),
           child: SectionTitle(widget.title, trailing: widget.trailing),
         ),
         ClipRect(
@@ -195,7 +195,14 @@ class _VistaRowState extends State<VistaRow> {
                 controller: _scroll,
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
-                padding: EdgeInsets.symmetric(horizontal: g, vertical: reserve),
+                // A destra anche l'area sicura: a fine riga l'ultima card
+                // a fuoco, con anello, resta dentro.
+                padding: EdgeInsets.fromLTRB(
+                  g,
+                  reserve,
+                  g + layout.safe.right,
+                  reserve,
+                ),
                 itemExtent: widget.itemWidth + spacing,
                 itemCount: widget.itemCount,
                 findChildIndexCallback: (key) => _indexOf(key),
@@ -262,7 +269,7 @@ class VistaRowSkeleton extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: g),
+          padding: EdgeInsets.only(left: g, right: g + layout.safe.right),
           child: SectionTitle(title),
         ),
         ClipRect(
