@@ -148,6 +148,12 @@ class _CardText extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: t.titleSmall,
+                // Righe alte uguali anche con caratteri non latini
+                // (es. devanagari): il riquadro ha un'altezza fissa.
+                strutStyle: StrutStyle.fromTextStyle(
+                  t.titleSmall!,
+                  forceStrutHeight: true,
+                ),
               ),
               if (meta.isNotEmpty) ...[
                 const SizedBox(height: VistaSpace.s4),
@@ -156,6 +162,12 @@ class _CardText extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t.bodySmall,
+                  // Righe alte uguali anche con caratteri non latini
+                  // (es. devanagari): il riquadro ha un'altezza fissa.
+                  strutStyle: StrutStyle.fromTextStyle(
+                    t.bodySmall!,
+                    forceStrutHeight: true,
+                  ),
                 ),
               ],
             ],

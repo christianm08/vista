@@ -329,7 +329,15 @@ void _countKeyboardFocus(int delta) {
   _keyboardFocusCount += delta;
   // Notifica solo quando si passa da "nessuno" a "qualcuno" e viceversa:
   // spostando il fuoco non si ricostruiscono tutte le card.
-  _keyboardFocusShown.value = _keyboardFocusCount > 0;
+  void notify() => _keyboardFocusShown.value = _keyboardFocusCount > 0;
+  // Durante build e smontaggio (es. si lascia una pagina con una card a
+  // fuoco) l'albero è bloccato: si notifica a fine frame.
+  if (SchedulerBinding.instance.schedulerPhase ==
+      SchedulerPhase.persistentCallbacks) {
+    SchedulerBinding.instance.addPostFrameCallback((_) => notify());
+  } else {
+    notify();
+  }
 }
 
 class _VistaFocusableState extends State<VistaFocusable> {

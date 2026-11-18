@@ -288,7 +288,12 @@ class VistaRowSkeleton extends StatelessWidget {
                         padding: EdgeInsets.only(right: spacing),
                         child: SizedBox(
                           width: itemWidth,
-                          child: VistaCardSkeleton(aspect: aspect),
+                          // Testo solo se la riga lo mostra (non nella Home
+                          // wide, dove lo dice l'anteprima).
+                          child: VistaCardSkeleton(
+                            aspect: aspect,
+                            text: itemHeight > itemWidth / aspect,
+                          ),
                         ),
                       ),
                   ],

@@ -253,6 +253,54 @@ void main() {
     expect(_focusedKey(), 'r0-i6');
   });
 
+  testWidgets('lasciare una pagina con una card a fuoco non dà errori', (
+    tester,
+  ) async {
+    final show = ValueNotifier(true);
+    addTearDown(show.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder(
+            valueListenable: show,
+            builder: (context, on, _) => Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Resta a schermo e ascolta il conteggio del fuoco.
+                SizedBox(
+                  width: 100,
+                  child: VistaPosterCard(
+                    title: 'Fissa',
+                    image: '',
+                    restWidth: 100,
+                    onTap: () {},
+                  ),
+                ),
+                if (on)
+                  SizedBox(
+                    width: 100,
+                    child: VistaPosterCard(
+                      title: 'Va via',
+                      image: '',
+                      restWidth: 100,
+                      autofocus: true,
+                      onTap: () {},
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    // Modalità tastiera: il fuoco si vede.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    show.value = false;
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('animazioni ridotte: niente scala, solo l\'anello', (
     tester,
   ) async {

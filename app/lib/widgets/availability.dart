@@ -291,6 +291,12 @@ class _CastCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: t.titleSmall,
+                  // Righe alte uguali anche con caratteri non latini
+                  // (es. devanagari): il riquadro ha un'altezza fissa.
+                  strutStyle: StrutStyle.fromTextStyle(
+                    t.titleSmall!,
+                    forceStrutHeight: true,
+                  ),
                 ),
                 if (member.character.isNotEmpty) ...[
                   const SizedBox(height: VistaSpace.s4),
@@ -300,6 +306,12 @@ class _CastCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: t.bodySmall,
+                    // Righe alte uguali anche con caratteri non latini
+                    // (es. devanagari): il riquadro ha un'altezza fissa.
+                    strutStyle: StrutStyle.fromTextStyle(
+                      t.bodySmall!,
+                      forceStrutHeight: true,
+                    ),
                   ),
                 ],
               ],
