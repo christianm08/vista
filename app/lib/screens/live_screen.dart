@@ -207,6 +207,7 @@ class _LiveScreenState extends State<LiveScreen> {
         children: [
           if (recordable != null)
             VistaChoice(
+              autofocus: true,
               onTap: () => Navigator.pop(ctx, 'record'),
               child: _ActionRow(
                 recording
@@ -219,6 +220,7 @@ class _LiveScreenState extends State<LiveScreen> {
             ),
           if (upcoming != null)
             VistaChoice(
+              autofocus: recordable == null,
               onTap: () => Navigator.pop(ctx, 'remind'),
               child: _ActionRow(
                 reminded
@@ -231,6 +233,7 @@ class _LiveScreenState extends State<LiveScreen> {
               ),
             ),
           VistaChoice(
+            autofocus: recordable == null && upcoming == null,
             onTap: () => Navigator.pop(ctx, 'fav'),
             child: _ActionRow(
               fav ? Icons.star_rounded : Icons.star_outline_rounded,

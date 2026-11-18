@@ -83,6 +83,9 @@ class _AppShellState extends State<AppShell> {
   final _backHandlers = <BackHandler>[];
   final _navScope = FocusScopeNode(debugLabel: 'barra di navigazione');
   final _contentScope = FocusScopeNode(debugLabel: 'contenuto');
+
+  /// Quanto è aperta la barra laterale: su TV sposta il contenuto.
+  final _railRevealed = ValueNotifier<double>(0);
   final _navNodes = <Destination, FocusNode>{
     for (final d in Destination.values)
       d: FocusNode(debugLabel: 'nav ${d.name}'),
@@ -137,6 +140,7 @@ class _AppShellState extends State<AppShell> {
   void dispose() {
     _navScope.dispose();
     _contentScope.dispose();
+    _railRevealed.dispose();
     for (final n in _navNodes.values) {
       n.dispose();
     }
@@ -341,12 +345,27 @@ class _AppShellState extends State<AppShell> {
         children: [
           Positioned.fill(
             left: layout.contentLeft,
-            child: Focus(
-              canRequestFocus: false,
-              skipTraversal: true,
-              onKeyEvent: _contentKey,
-              // Tablet: niente contenuto sotto la barra di stato.
-              child: SafeArea(bottom: false, left: false, child: _content),
+            // Su TV la barra aperta sposta il contenuto invece di coprirlo
+            // (una traslazione: il layout non cambia). Su PC no: col mouse
+            // la pagina si sposterebbe a ogni passaggio sulle icone.
+            child: ValueListenableBuilder(
+              valueListenable: _railRevealed,
+              builder: (context, v, child) => Transform.translate(
+                offset: Offset(
+                  layout.tv
+                      ? (VistaSize.railExpanded - layout.contentLeft) * v
+                      : 0,
+                  0,
+                ),
+                child: child,
+              ),
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onKeyEvent: _contentKey,
+                // Tablet: niente contenuto sotto la barra di stato.
+                child: SafeArea(bottom: false, left: false, child: _content),
+              ),
             ),
           ),
           // La barra si apre sopra il contenuto, piena e opaca: il contenuto
@@ -388,6 +407,7 @@ class _AppShellState extends State<AppShell> {
                 selected: order.indexOf(_current),
                 focusNodes: [for (final d in order) _navNodes[d]!],
                 onSelect: (i) => _go(order[i]),
+                revealed: _railRevealed,
                 caption: widget.library.sources.length > 1
                     ? '${widget.library.sources.length} fonti'
                     : widget.library.source.displayName,

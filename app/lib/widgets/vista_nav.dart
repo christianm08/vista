@@ -41,6 +41,7 @@ class VistaRail extends StatefulWidget {
     this.open,
     this.onOpenChanged,
     this.caption = '',
+    this.revealed,
   });
 
   final List<VistaNavItem> items;
@@ -62,6 +63,9 @@ class VistaRail extends StatefulWidget {
   final bool? open;
   final ValueChanged<bool>? onOpenChanged;
 
+  /// Quanto è aperta (da 0 a 1), per chi sposta il contenuto insieme.
+  final ValueNotifier<double>? revealed;
+
   @override
   State<VistaRail> createState() => _VistaRailState();
 }
@@ -82,6 +86,12 @@ class _VistaRailState extends State<VistaRail>
   bool _lastOpen = false;
 
   bool get _open => widget.open ?? (_focus || _hover);
+
+  @override
+  void initState() {
+    super.initState();
+    _curve.addListener(() => widget.revealed?.value = _curve.value);
+  }
 
   @override
   void didUpdateWidget(VistaRail oldWidget) {
@@ -197,9 +207,8 @@ class _VistaRailState extends State<VistaRail>
                             opacity: _curve,
                             child: Text(
                               widget.caption,
-                              maxLines: 1,
-                              softWrap: false,
-                              overflow: TextOverflow.fade,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ),

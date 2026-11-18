@@ -85,9 +85,11 @@ class VistaLayout {
       ? VistaSize.wideCardCompact
       : (_large ? VistaSize.wideCardLarge : VistaSize.wideCard);
 
-  /// Rientro delle voci della barra laterale: su TV le voci e il loro anello
-  /// (che sporge di 5 px) restano dentro l'area sicura.
-  double get railInset => tv ? safe.left + VistaSpace.s8 : VistaSpace.s16;
+  /// Rientro delle voci della barra laterale. Su TV è il margine dei
+  /// contenuti, non l'area sicura del 5%: con quella il vuoto a sinistra era
+  /// troppo (scelta dell'utente). Le TV di oggi non tagliano i bordi; su una
+  /// che lo fa le icone resterebbero comunque intere (anello a 26 punti).
+  double get railInset => tv ? VistaSpace.s32 : VistaSpace.s16;
 
   /// Barra laterale chiusa.
   double get railWidth => railInset + VistaSize.railItemWidth + VistaSpace.s16;

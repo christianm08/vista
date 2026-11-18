@@ -139,10 +139,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           if (source.canRefresh)
             VistaChoice(
+              autofocus: true,
               onTap: () => Navigator.pop(ctx, 'refresh'),
               child: const Text('Aggiorna adesso'),
             ),
           VistaChoice(
+            autofocus: !source.canRefresh,
             onTap: () => Navigator.pop(ctx, 'rename'),
             child: const Text('Rinomina'),
           ),
@@ -386,6 +388,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: const Text('PIN'),
           children: [
             VistaChoice(
+              autofocus: true,
               onTap: () => Navigator.pop(ctx, 'change'),
               child: const Text('Cambia PIN'),
             ),

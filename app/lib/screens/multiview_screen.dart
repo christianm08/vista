@@ -240,6 +240,7 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
             'full',
             Icons.fullscreen_rounded,
             'Guarda a schermo intero',
+            autofocus: true,
           ),
           _menuItem(ctx, 'swap', Icons.swap_horiz_rounded, 'Cambia canale'),
           if (t.picker.streams.length > 1)
@@ -271,8 +272,10 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
     BuildContext ctx,
     String value,
     IconData icon,
-    String label,
-  ) => VistaChoice(
+    String label, {
+    bool autofocus = false,
+  }) => VistaChoice(
+    autofocus: autofocus,
     onTap: () => Navigator.pop(ctx, value),
     child: Row(
       children: [
