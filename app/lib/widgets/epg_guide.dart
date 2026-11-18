@@ -329,6 +329,18 @@ class _EpgGridState extends State<EpgGrid> {
                         .floor();
                     return Stack(
                       children: [
+                        // Linea "adesso": una sola, sotto le celle: si vede
+                        // negli spazi tra le righe e non copre i testi.
+                        if (nowX >= 0 && nowX <= timelineWidth)
+                          Positioned(
+                            left: left + nowX - VistaSize.guideNowLine / 2,
+                            top: 0,
+                            bottom: 0,
+                            width: VistaSize.guideNowLine,
+                            child: const IgnorePointer(
+                              child: ColoredBox(color: VistaColors.accent),
+                            ),
+                          ),
                         ListView.builder(
                           controller: _scroll,
                           itemExtent: GuideMetrics.rowHeight,
@@ -351,17 +363,6 @@ class _EpgGridState extends State<EpgGrid> {
                                 widget.onEdit(widget.channels[i]),
                           ),
                         ),
-                        // Linea "adesso": una sola, sopra tutte le righe.
-                        if (nowX >= 0 && nowX <= timelineWidth)
-                          Positioned(
-                            left: left + nowX - VistaSize.guideNowLine / 2,
-                            top: 0,
-                            bottom: 0,
-                            width: VistaSize.guideNowLine,
-                            child: const IgnorePointer(
-                              child: ColoredBox(color: VistaColors.accent),
-                            ),
-                          ),
                       ],
                     );
                   },
@@ -609,9 +610,11 @@ class _Cell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final rest = highlighted
+    // Sul fondo della pagina le celle devono staccarsi: le future su
+    // surfaceHigh, quella in onda un gradino sopra.
+    final rest = highlighted || onAir
         ? VistaColors.surfaceSelected
-        : (onAir ? VistaColors.surfaceHigh : VistaColors.surface);
+        : VistaColors.surfaceHigh;
     return GestureDetector(
       onTap: onTap,
       child: VistaFocusEffect(

@@ -23,6 +23,7 @@ void main() {
       'Pellicola 2025/2026',
     );
     expect(cleanGroupName('Azione'), 'Azione');
+    expect(cleanGroupName('IT: ITALY [4K-Q]/[4K-Q]'), 'Italy');
   });
 
   test('il titolo TMDB solo se si legge nella stessa scrittura', () {

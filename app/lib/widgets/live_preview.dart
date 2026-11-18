@@ -163,7 +163,7 @@ class _LivePreviewState extends State<LivePreview> {
                     children: [
                       ChannelLogo(
                         channel: c,
-                        size: VistaSize.channelLogoCard,
+                        size: VistaSize.livePreviewLogo,
                         boxed: false,
                       ),
                       if (_failed) ...[

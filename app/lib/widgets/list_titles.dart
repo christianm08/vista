@@ -28,7 +28,7 @@ String cleanListTitle(String raw) {
     s = s.replaceFirst(tail, '');
   }
   s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
-  s = s.replaceFirst(RegExp(r'[\s\-–|:]+$'), '').trim();
+  s = s.replaceFirst(RegExp(r'[\s\-–|:/]+$'), '').trim();
   return s.isEmpty ? raw.trim() : s;
 }
 

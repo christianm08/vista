@@ -221,6 +221,9 @@ abstract final class VistaSize {
 
   /// Live TV: anteprima del canale a fuoco (wide) e barra del programma.
   static const livePreview = Size(352, 198);
+
+  /// Logo nell'anteprima della TV in diretta finché non c'è video.
+  static const livePreviewLogo = 112.0;
   static const liveProgress = 220.0;
 
   /// Player: logo nella barra del programma, elenco rapido dei canali,
