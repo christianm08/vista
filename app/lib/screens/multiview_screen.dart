@@ -15,6 +15,7 @@ import '../widgets/channel_logo.dart';
 import '../widgets/epg_guide.dart' show hhmm;
 import '../widgets/focus_card.dart';
 import '../widgets/tv_text_field.dart';
+import '../widgets/vista_controls.dart';
 import 'vod_player_screen.dart' show PlayerBackButton;
 
 /// Un riquadro del Multiview: un canale col suo player.
@@ -271,17 +272,14 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
     String value,
     IconData icon,
     String label,
-  ) => SimpleDialogOption(
-    onPressed: () => Navigator.pop(ctx, value),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 22),
-          const SizedBox(width: 14),
-          Text(label),
-        ],
-      ),
+  ) => VistaChoice(
+    onTap: () => Navigator.pop(ctx, value),
+    child: Row(
+      children: [
+        Icon(icon),
+        const SizedBox(width: VistaSpace.s16),
+        Flexible(child: Text(label)),
+      ],
     ),
   );
 

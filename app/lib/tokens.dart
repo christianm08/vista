@@ -125,6 +125,10 @@ abstract final class VistaScrims {
     Color(0x000C0D0C),
   ];
   static const playerBottomStops = [0.0, 0.6, 1.0];
+
+  /// Dietro le finestre di dialogo: la pagina resta appena leggibile e la
+  /// finestra, su superficie alta, si stacca (funzionale, non decorativo).
+  static const dialogBarrier = Color(0xD90C0D0C);
 }
 
 /// Spaziature. Nessun altro valore.

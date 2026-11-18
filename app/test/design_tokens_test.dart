@@ -37,6 +37,7 @@ const _migrated = [
   'lib/screens/settings_screen.dart',
   'lib/screens/shell.dart',
   'lib/widgets/vista_grid.dart',
+  'lib/widgets/tv_text_field.dart',
 ];
 
 /// Valori scritti a mano che devono stare solo in lib/tokens.dart.

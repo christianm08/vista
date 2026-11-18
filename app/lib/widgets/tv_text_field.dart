@@ -136,14 +136,9 @@ class _TvTextFieldState extends State<TvTextField> {
       },
       decoration: InputDecoration(
         hintText: widget.hint,
+        // Bordo a fuoco dal tema: anello bianco, come ogni altro fuoco. Che
+        // si stia scrivendo lo dice il cursore.
         prefixIcon: widget.prefixIcon,
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(
-            color: _editing || _direct ? VistaColors.accent : Colors.white,
-            width: 3,
-          ),
-        ),
       ),
     );
   }

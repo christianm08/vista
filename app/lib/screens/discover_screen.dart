@@ -71,6 +71,26 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     autofocus: true,
   );
 
+  /// Sceglie il servizio da mostrare, o tutti i miei.
+  Future<void> _pickService(List<WatchProvider> mine) async {
+    Widget option(BuildContext ctx, int? id, String label) => VistaChoice(
+      selected: id == _service,
+      onTap: () => Navigator.pop(ctx, (id,)),
+      child: Text(label),
+    );
+    final picked = await showDialog<(int?,)>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Servizio'),
+        children: [
+          option(ctx, null, 'Tutti i miei servizi'),
+          for (final p in mine) option(ctx, p.id, p.name),
+        ],
+      ),
+    );
+    if (picked != null && mounted) setState(() => _service = picked.$1);
+  }
+
   List<int> _ids(AppScope app) =>
       _service != null ? [_service!] : app.user.services;
 
@@ -192,21 +212,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           selected: _kind == k,
           onSelected: () => setState(() => _kind = k),
         ),
+      // I servizi in un solo chip che apre la scelta: una fila di nove
+      // chip si confondeva con i tipi.
       if (mine.isNotEmpty) ...[
-        const SizedBox(width: VistaSpace.s8),
+        const SizedBox(width: VistaSpace.s16),
         VistaChip(
-          key: const ValueKey('all-mine'),
-          label: 'Tutti i miei',
-          selected: _service == null,
-          onSelected: () => setState(() => _service = null),
+          key: const ValueKey('service'),
+          icon: Icons.subscriptions_rounded,
+          label: serviceName ?? 'Tutti i miei servizi',
+          selected: _service != null,
+          onSelected: () => _pickService(mine),
         ),
-        for (final p in mine)
-          VistaChip(
-            key: ValueKey(p.id),
-            label: p.name,
-            selected: _service == p.id,
-            onSelected: () => setState(() => _service = p.id),
-          ),
       ],
     ];
 

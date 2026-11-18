@@ -538,7 +538,8 @@ ThemeData buildVistaTheme({bool compact = false}) {
       space: 1,
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: VistaColors.surface,
+      backgroundColor: VistaColors.surfaceHigh,
+      barrierColor: VistaScrims.dialogBarrier,
       surfaceTintColor: VistaColors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(VistaRadius.panel),

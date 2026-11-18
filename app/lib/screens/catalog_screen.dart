@@ -220,19 +220,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
         title: const Text('Ordina per'),
         children: [
           for (final o in _Sort.values)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, o),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: VistaSize.icon + VistaSpace.s12,
-                    child: o == _sort
-                        ? const Icon(Icons.check_rounded)
-                        : const SizedBox.shrink(),
-                  ),
-                  Text(o.label),
-                ],
-              ),
+            VistaChoice(
+              selected: o == _sort,
+              onTap: () => Navigator.pop(ctx, o),
+              child: Text(o.label),
             ),
         ],
       ),
@@ -335,15 +326,28 @@ class _CatalogScreenState extends State<CatalogScreen> {
               header: Padding(
                 padding: EdgeInsets.fromLTRB(g, top, g + layout.safe.right, 0),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Expanded(
+                    // La categoria è il titolo della pagina; il conteggio
+                    // è un metadato, attenuato.
+                    Flexible(
                       child: Text(
-                        '${_label(_group)}  ·  ${items.length}',
+                        _label(_group),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: t.titleLarge,
+                        style: t.headlineSmall,
                       ),
                     ),
+                    const SizedBox(width: VistaSpace.s12),
+                    Text(
+                      items.length == 1 ? '1 titolo' : '${items.length} titoli',
+                      style: t.labelLarge?.copyWith(
+                        color: VistaColors.textSecondary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const Spacer(),
                     const SizedBox(width: VistaSpace.s16),
                     VistaButton.tonal(
                       icon: Icons.sort_rounded,
@@ -519,7 +523,7 @@ class _Category extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final fg = selected ? VistaColors.text : VistaColors.textSecondary;
+    final fg = selected ? VistaColors.text : VistaColors.textBody;
     return Focus(
       canRequestFocus: false,
       skipTraversal: true,

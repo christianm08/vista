@@ -232,3 +232,76 @@ class VistaChip extends StatelessWidget {
     );
   }
 }
+
+/// Voce di una finestra di dialogo o di un menu: a fuoco superficie più
+/// chiara e anello, senza scala (le voci Material non mostrano il fuoco: il
+/// tema lo spegne). Con [selected] non nullo c'è la colonna della spunta,
+/// piena sulla scelta attuale, che ha anche il fuoco all'apertura.
+class VistaChoice extends StatelessWidget {
+  const VistaChoice({
+    super.key,
+    required this.child,
+    required this.onTap,
+    this.selected,
+    this.autofocus = false,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final bool? selected;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: VistaSpace.s16,
+      vertical: VistaSpace.s4,
+    ),
+    // Il fuoco non fa scorrere da solo (VistaTraversalPolicy): un elenco
+    // lungo porta al centro la voce a fuoco.
+    child: Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (has) {
+        if (!has) return;
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.5,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : VistaMotion.rowScroll,
+          curve: VistaMotion.enter,
+        );
+      },
+      child: VistaFocusable(
+        autofocus: autofocus || (selected ?? false),
+        kind: VistaFocusKind.flat,
+        radius: VistaRadius.chip,
+        fill: VistaColors.transparent,
+        activeFill: VistaColors.surfaceSelected,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: VistaSize.minTouch),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: VistaSpace.s12,
+              vertical: VistaSpace.s8,
+            ),
+            child: Row(
+              children: [
+                if (selected case final s?)
+                  SizedBox(
+                    width: VistaSize.icon + VistaSpace.s12,
+                    child: s
+                        ? const Icon(Icons.check_rounded)
+                        : const SizedBox.shrink(),
+                  ),
+                Expanded(child: child),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}

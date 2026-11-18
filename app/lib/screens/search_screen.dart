@@ -116,28 +116,40 @@ class _SearchScreenState extends State<SearchScreen> {
     );
 
     if (tv) {
+      // Titolo su tutta la larghezza; sotto, tastiera e risultati partono
+      // alla stessa altezza: il campo e la prima riga si leggono insieme.
       return Padding(
         padding: EdgeInsets.only(top: top, bottom: layout.safe.bottom),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
               padding: EdgeInsets.only(left: g),
-              child: SizedBox(
-                width: _Keyboard.width,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('Cerca', style: t.headlineSmall),
-                    const SizedBox(height: VistaSpace.s16),
-                    field,
-                    const SizedBox(height: VistaSpace.s16),
-                    _Keyboard(controller: _query),
-                  ],
-                ),
+              child: Text('Cerca', style: t.headlineSmall),
+            ),
+            const SizedBox(height: VistaSpace.s16),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(left: g),
+                    child: SizedBox(
+                      width: _Keyboard.width,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          field,
+                          const SizedBox(height: VistaSpace.s16),
+                          _Keyboard(controller: _query),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(child: results),
+                ],
               ),
             ),
-            Expanded(child: results),
           ],
         ),
       );

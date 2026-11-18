@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../widgets/channel_dialogs.dart';
 import '../widgets/vista_focus.dart';
 import '../widgets/tv_text_field.dart';
+import '../widgets/vista_controls.dart';
 import 'channel_settings_screen.dart';
 import 'import_screen.dart';
 import 'recordings_screen.dart';
@@ -137,24 +138,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text(source.displayName),
         children: [
           if (source.canRefresh)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'refresh'),
+            VistaChoice(
+              onTap: () => Navigator.pop(ctx, 'refresh'),
               child: const Text('Aggiorna adesso'),
             ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'rename'),
+          VistaChoice(
+            onTap: () => Navigator.pop(ctx, 'rename'),
             child: const Text('Rinomina'),
           ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'agent'),
+          VistaChoice(
+            onTap: () => Navigator.pop(ctx, 'agent'),
             child: Text(
               source.userAgent.isEmpty
                   ? 'Imposta uno user-agent'
                   : 'Cambia user-agent',
             ),
           ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'remove'),
+          VistaChoice(
+            onTap: () => Navigator.pop(ctx, 'remove'),
             child: Text(last ? 'Togli (e torna all\'inizio)' : 'Togli'),
           ),
         ],
@@ -222,10 +223,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Aggiornamento automatico'),
         children: [
           for (final a in AutoRefresh.values)
-            _Choice(
-              label: a.label,
+            VistaChoice(
               selected: a == user.autoRefresh,
               onTap: () => Navigator.pop(ctx, a),
+              child: Text(a.label),
             ),
         ],
       ),
@@ -351,10 +352,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: ListView(
                 children: [
                   for (var h = -12; h <= 12; h++)
-                    _Choice(
-                      label: shiftLabel(Duration(hours: h)),
+                    VistaChoice(
                       selected: h == current,
                       onTap: () => Navigator.pop(ctx, h),
+                      child: Text(shiftLabel(Duration(hours: h))),
                     ),
                 ],
               ),
@@ -384,12 +385,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (ctx) => SimpleDialog(
           title: const Text('PIN'),
           children: [
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'change'),
+            VistaChoice(
+              onTap: () => Navigator.pop(ctx, 'change'),
               child: const Text('Cambia PIN'),
             ),
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'remove'),
+            VistaChoice(
+              onTap: () => Navigator.pop(ctx, 'remove'),
               child: const Text('Togli il PIN e tutti i blocchi'),
             ),
           ],
@@ -836,51 +837,6 @@ class _Tile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Una scelta in una finestra di dialogo: segno di spunta su quella attuale.
-class _Choice extends StatelessWidget {
-  const _Choice({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(
-      horizontal: VistaSpace.s16,
-      vertical: VistaSpace.s4,
-    ),
-    child: _Centered(
-      child: VistaFocusable(
-        autofocus: selected,
-        kind: VistaFocusKind.flat,
-        radius: VistaRadius.chip,
-        fill: VistaColors.transparent,
-        activeFill: VistaColors.surfaceHigh,
-        onTap: onTap,
-        child: SizedBox(
-          height: VistaSize.minTouch,
-          child: Row(
-            children: [
-              SizedBox(
-                width: VistaSize.icon + VistaSpace.s24,
-                child: selected
-                    ? const Icon(Icons.check_rounded)
-                    : const SizedBox.shrink(),
-              ),
-              Expanded(child: Text(label)),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 /// Il fuoco non fa scorrere da solo (VistaTraversalPolicy): l'elenco porta

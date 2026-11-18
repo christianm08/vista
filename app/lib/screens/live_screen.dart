@@ -206,8 +206,8 @@ class _LiveScreenState extends State<LiveScreen> {
         ),
         children: [
           if (recordable != null)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'record'),
+            VistaChoice(
+              onTap: () => Navigator.pop(ctx, 'record'),
               child: _ActionRow(
                 recording
                     ? Icons.stop_circle_outlined
@@ -218,8 +218,8 @@ class _LiveScreenState extends State<LiveScreen> {
               ),
             ),
           if (upcoming != null)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'remind'),
+            VistaChoice(
+              onTap: () => Navigator.pop(ctx, 'remind'),
               child: _ActionRow(
                 reminded
                     ? Icons.notifications_off_outlined
@@ -230,16 +230,16 @@ class _LiveScreenState extends State<LiveScreen> {
                           '(${hhmm(upcoming.start)})',
               ),
             ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'fav'),
+          VistaChoice(
+            onTap: () => Navigator.pop(ctx, 'fav'),
             child: _ActionRow(
               fav ? Icons.star_rounded : Icons.star_outline_rounded,
               fav ? 'Togli dai preferiti' : 'Aggiungi ai preferiti',
             ),
           ),
           if (app.parental.enabled)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'lock'),
+            VistaChoice(
+              onTap: () => Navigator.pop(ctx, 'lock'),
               child: _ActionRow(
                 app.parental.lockedChannels.contains(c.key)
                     ? Icons.lock_open_rounded
@@ -249,26 +249,26 @@ class _LiveScreenState extends State<LiveScreen> {
                     : 'Proteggi col PIN',
               ),
             ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'hide'),
+          VistaChoice(
+            onTap: () => Navigator.pop(ctx, 'hide'),
             child: const _ActionRow(
               Icons.visibility_off_outlined,
               'Nascondi canale',
             ),
           ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'move'),
+          VistaChoice(
+            onTap: () => Navigator.pop(ctx, 'move'),
             child: const _ActionRow(
               Icons.drive_file_move_outline,
               'Sposta in categoria',
             ),
           ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'number'),
+          VistaChoice(
+            onTap: () => Navigator.pop(ctx, 'number'),
             child: _ActionRow(Icons.pin_outlined, 'Numero (${c.number})'),
           ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'edit'),
+          VistaChoice(
+            onTap: () => Navigator.pop(ctx, 'edit'),
             child: const _ActionRow(Icons.edit_outlined, 'Modifica canale'),
           ),
         ],
@@ -764,15 +764,12 @@ class _ActionRow extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: VistaSpace.s8),
-    child: Row(
-      children: [
-        Icon(icon, size: VistaSize.icon),
-        const SizedBox(width: VistaSpace.s16),
-        Flexible(child: Text(label)),
-      ],
-    ),
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, size: VistaSize.icon),
+      const SizedBox(width: VistaSpace.s16),
+      Flexible(child: Text(label)),
+    ],
   );
 }
 
