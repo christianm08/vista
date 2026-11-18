@@ -11,9 +11,9 @@ import '../theme.dart';
 import '../widgets/channel_dialogs.dart';
 import '../widgets/channel_logo.dart';
 import '../widgets/epg_guide.dart';
-import '../widgets/focus_card.dart';
 import '../widgets/live_preview.dart';
-import '../widgets/tv_drawer.dart';
+import '../widgets/vista_cards.dart';
+import '../widgets/vista_controls.dart';
 import 'channel_settings_screen.dart';
 import 'shell.dart';
 
@@ -29,9 +29,9 @@ String _groupLabel(String g) => switch (g) {
   _ => g,
 };
 
-/// TV in diretta. Su TV e PC: dettagli del programma e anteprima in alto,
-/// guida a griglia sotto, categorie in un pannello laterale (sinistra
-/// dall'ora attuale). Su telefono: categorie a scorrimento e lista canali.
+/// TV in diretta. Su TV e PC: anteprima del canale a fuoco in alto, filtri
+/// per categoria, guida a griglia sotto. Su telefono: filtri a scorrimento e
+/// lista dei canali.
 class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
 
@@ -41,7 +41,6 @@ class LiveScreen extends StatefulWidget {
 
 class _LiveScreenState extends State<LiveScreen> {
   String _group = _all;
-  bool _panel = false;
   bool _previewOn = true;
 
   /// Canale e programma sotto il cursore della guida. Cambia a ogni freccia:
@@ -57,7 +56,12 @@ class _LiveScreenState extends State<LiveScreen> {
   DateTime _now = DateTime.now();
   late final Timer _clock;
   final _gridFocus = FocusNode(debugLabel: 'guida');
-  ShellController? _shell;
+
+  /// Un nodo per chip: Su dalla guida torna sul filtro scelto.
+  final _chipFocus = <String, FocusNode>{};
+
+  FocusNode _chipNode(String g) =>
+      _chipFocus.putIfAbsent(g, () => FocusNode(debugLabel: 'filtro $g'));
 
   @override
   void initState() {
@@ -65,8 +69,6 @@ class _LiveScreenState extends State<LiveScreen> {
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
-    _shell = ShellController.maybeOf(context);
-    _shell?.addBackHandler(_onBack);
     final user = AppScope.of(context).user;
     // Si parte dai preferiti, se ce ne sono.
     if (user.favorites.any((k) => k.startsWith('ch:'))) _group = _favorites;
@@ -74,19 +76,13 @@ class _LiveScreenState extends State<LiveScreen> {
 
   @override
   void dispose() {
-    _shell?.removeBackHandler(_onBack);
     _clock.cancel();
     _gridFocus.dispose();
+    for (final n in _chipFocus.values) {
+      n.dispose();
+    }
     _selection.dispose();
     super.dispose();
-  }
-
-  bool _onBack() {
-    if (_panel) {
-      _closePanel();
-      return true;
-    }
-    return false;
   }
 
   void _memo(Catalog c) {
@@ -139,20 +135,20 @@ class _LiveScreenState extends State<LiveScreen> {
   }
 
   void _pick(String g) {
+    if (g == _group) return;
     setState(() {
       _group = g;
       _selection.value = null;
     });
-    _closePanel();
   }
 
-  void _openPanel() => setState(() => _panel = true);
-
-  void _closePanel() {
-    setState(() => _panel = false);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _gridFocus.context != null) _gridFocus.requestFocus();
-    });
+  Future<void> _manageChannels() async {
+    final store = AppScope.of(context).store;
+    setState(() => _previewOn = false);
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ChannelSettingsScreen(store: store)),
+    );
+    if (mounted) setState(() => _previewOn = true);
   }
 
   Future<void> _play(List<Channel> list, Channel c) async {
@@ -199,14 +195,10 @@ class _LiveScreenState extends State<LiveScreen> {
     final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
         title: Row(
           children: [
-            ChannelLogo(channel: c, size: 36),
-            const SizedBox(width: 12),
+            ChannelLogo(channel: c, size: VistaSize.guideLogo),
+            const SizedBox(width: VistaSpace.s12),
             Expanded(
               child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
@@ -451,141 +443,171 @@ class _LiveScreenState extends State<LiveScreen> {
     EpgGuide guide,
   ) {
     final app = AppScope.of(context);
-    final height = MediaQuery.sizeOf(context).height;
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: SafeArea(
-            left: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-              child: channels.isEmpty
-                  ? Column(
-                      children: [
-                        _categoryButton(context, groups),
-                        const Expanded(
-                          child: EmptyState(
-                            icon: Icons.live_tv_outlined,
-                            title: 'Nessun canale qui',
-                            message: 'Scegli un\'altra categoria.',
-                          ),
-                        ),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                          height: (height * 0.36).clamp(170.0, 300.0),
-                          child: ListenableBuilder(
-                            listenable: Listenable.merge([
-                              app.epg.status,
-                              _selection,
-                            ]),
-                            builder: (context, _) {
-                              final selection = _selection.value;
-                              return GuideHeader(
-                                selection: selection,
-                                now: _now,
-                                category: _groupLabel(_group),
-                                status: app.epg.status.value,
-                                preview: LivePreview(
-                                  channel: selection?.channel ?? channels.first,
-                                  enabled:
-                                      _previewOn &&
-                                      !_panel &&
-                                      (!app.parental.isLocked(
-                                            selection?.channel ??
-                                                channels.first,
-                                          ) ||
-                                          app.parental.isUnlocked),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Expanded(
-                          child: EpgGrid(
-                            channels: channels,
-                            guide: guide,
-                            now: _now,
-                            focusNode: _gridFocus,
-                            onSelectionChanged: (s) => _selection.value = s,
-                            onPlay: (c) => _play(channels, c),
-                            onEdit: _actions,
-                            onOpenMenu: _openPanel,
-                          ),
-                        ),
-                      ],
-                    ),
+    final layout = VistaLayout.of(context);
+    final g = layout.gutter;
+    final top = layout.safe.top > VistaSpace.s32
+        ? layout.safe.top
+        : VistaSpace.s32;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        g,
+        top,
+        g + layout.safe.right,
+        layout.safe.bottom,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _title(context),
+          const SizedBox(height: VistaSpace.s16),
+          if (channels.isNotEmpty)
+            ListenableBuilder(
+              listenable: Listenable.merge([app.epg.status, _selection]),
+              builder: (context, _) {
+                final channel = _selection.value?.channel ?? channels.first;
+                return LiveHeader(
+                  selection: _selection.value,
+                  now: _now,
+                  status: app.epg.status.value,
+                  preview: LivePreview(
+                    channel: channel,
+                    enabled:
+                        _previewOn &&
+                        (!app.parental.isLocked(channel) ||
+                            app.parental.isUnlocked),
+                  ),
+                );
+              },
             ),
+          _filters(context, groups),
+          Expanded(
+            child: channels.isEmpty
+                ? const EmptyState(
+                    icon: Icons.live_tv_outlined,
+                    title: 'Nessun canale qui',
+                    message: 'Scegli un\'altra categoria.',
+                  )
+                : Stack(
+                    children: [
+                      EpgGrid(
+                        channels: channels,
+                        guide: guide,
+                        now: _now,
+                        focusNode: _gridFocus,
+                        onSelectionChanged: (s) => _selection.value = s,
+                        onPlay: (c) => _play(channels, c),
+                        onEdit: _actions,
+                        onExitTop: () {
+                          // Il chip scelto, se la fila lo ha costruito;
+                          // altrimenti il primo.
+                          final n = _chipNode(_group);
+                          (n.context != null ? n : _chipNode(_all))
+                              .requestFocus();
+                        },
+                      ),
+                      // Entrando nella sezione si è subito sui canali.
+                      _AutofocusGrid(node: _gridFocus),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Titolo della pagina, data e ora, gestione dei canali.
+  Widget _title(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final compact = VistaLayout.of(context).compact;
+    const days = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'];
+    const months = [
+      'gen', 'feb', 'mar', 'apr', 'mag', 'giu', //
+      'lug', 'ago', 'set', 'ott', 'nov', 'dic',
+    ];
+    final meta = t.labelLarge?.copyWith(
+      color: VistaColors.textSecondary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'TV in diretta',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: t.headlineSmall,
           ),
         ),
-        // L'autofocus della griglia: entrando nella sezione si è subito sui canali.
-        if (channels.isNotEmpty) _AutofocusGrid(node: _gridFocus),
-        Positioned.fill(
-          // Se il focus esce dal pannello (es. verso la barra laterale) il
-          // pannello si chiude senza riprendersi il focus.
-          child: Focus(
-            canRequestFocus: false,
-            skipTraversal: true,
-            onFocusChange: (has) {
-              if (!has && _panel) setState(() => _panel = false);
-            },
-            child: TvDrawer(
-              open: _panel,
-              title: 'Categorie',
-              onClose: _closePanel,
-              sections: const [],
-              groups: [
-                for (final (g, n) in groups)
-                  DrawerEntry(
-                    label: _groupLabel(g),
-                    icon: switch (g) {
-                      _favorites => Icons.star_rounded,
-                      _recent => Icons.history_rounded,
-                      _all => Icons.apps_rounded,
-                      _ => null,
-                    },
-                    trailing: '$n',
-                    selected: g == _group,
-                    onTap: () => _pick(g),
-                  ),
-              ],
-              actions: [
-                DrawerEntry(
-                  icon: Icons.tune_rounded,
-                  label: 'Gestisci canali',
-                  onTap: () async {
-                    _closePanel();
-                    setState(() => _previewOn = false);
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ChannelSettingsScreen(store: app.store),
-                      ),
-                    );
-                    if (mounted) setState(() => _previewOn = true);
-                  },
-                ),
-              ],
-            ),
+        if (!compact) ...[
+          Text(
+            '${days[_now.weekday - 1]} ${_now.day} ${months[_now.month - 1]} · ',
+            style: meta,
           ),
+          VistaClock(style: meta),
+          const SizedBox(width: VistaSpace.s16),
+        ],
+        VistaIconButton(
+          icon: Icons.tune_rounded,
+          tooltip: 'Gestisci canali',
+          onPressed: _manageChannels,
         ),
       ],
     );
   }
 
-  Widget _categoryButton(BuildContext context, List<(String, int)> groups) =>
-      Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          autofocus: true,
-          onPressed: _openPanel,
-          icon: const Icon(Icons.list_rounded),
-          label: Text(_groupLabel(_group)),
+  /// Filtri per categoria: una fila di chip che scorre col fuoco.
+  Widget _filters(BuildContext context, List<(String, int)> groups) {
+    final layout = VistaLayout.of(context);
+    // Sopra e sotto, spazio per l'anello del chip a fuoco.
+    const reserve = VistaSpace.s8;
+    return SizedBox(
+      height: layout.chipHeight + reserve * 2 + (layout.compact ? 0 : reserve),
+      child: ClipRect(
+        clipper: const _SidesOnly(reserve),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          padding: EdgeInsets.fromLTRB(
+            layout.compact ? layout.gutter : 0,
+            layout.compact ? reserve : reserve * 2,
+            layout.gutter,
+            reserve,
+          ),
+          itemCount: groups.length,
+          separatorBuilder: (_, _) => const SizedBox(width: VistaSpace.s8),
+          itemBuilder: (context, i) {
+            final (g, n) = groups[i];
+            // Il fuoco non fa scorrere da solo (VistaTraversalPolicy): la
+            // fila porta in vista il chip a fuoco.
+            return Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              onFocusChange: (has) {
+                if (has) {
+                  Scrollable.ensureVisible(
+                    context,
+                    alignment: 0.5,
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : VistaMotion.rowScroll,
+                    curve: VistaMotion.enter,
+                  );
+                }
+              },
+              child: VistaChip(
+                focusNode: _chipNode(g),
+                label: layout.compact
+                    ? '${_groupLabel(g)}  $n'
+                    : _groupLabel(g),
+                selected: g == _group,
+                onSelected: () => _pick(g),
+              ),
+            );
+          },
         ),
-      );
+      ),
+    );
+  }
 
   // ===== Telefono ==============================================================
 
@@ -595,71 +617,24 @@ class _LiveScreenState extends State<LiveScreen> {
     List<(String, int)> groups,
     EpgGuide guide,
   ) {
-    final t = Theme.of(context).textTheme;
+    final layout = VistaLayout.of(context);
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'TV in diretta',
-                      style: t.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Gestisci canali',
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ChannelSettingsScreen(
-                          store: AppScope.of(context).store,
-                        ),
-                      ),
-                    ),
-                    icon: const Icon(Icons.tune_rounded),
-                  ),
-                ],
+              padding: EdgeInsets.fromLTRB(
+                layout.gutter,
+                VistaSpace.s8,
+                VistaSpace.s8,
+                0,
               ),
+              child: _title(context),
             ),
           ),
         ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 52,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              itemCount: groups.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final (g, n) = groups[i];
-                return FocusCard(
-                  radius: 999,
-                  focusScale: 1.0,
-                  selected: _group == g,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  onTap: () => setState(() => _group = g),
-                  child: Text(
-                    '${_groupLabel(g)}  $n',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
+        SliverToBoxAdapter(child: _filters(context, groups)),
         if (channels.isEmpty)
           const SliverFillRemaining(
             hasScrollBody: false,
@@ -670,7 +645,12 @@ class _LiveScreenState extends State<LiveScreen> {
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 110),
+            padding: EdgeInsets.fromLTRB(
+              layout.gutter,
+              0,
+              layout.gutter,
+              VistaSpace.s32,
+            ),
             sliver: SliverList.builder(
               itemCount: channels.length,
               itemBuilder: (_, i) =>
@@ -695,28 +675,21 @@ class _LiveScreenState extends State<LiveScreen> {
       onTap: () => _play(list, c),
       onLongPress: () => _actions(c),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: VistaSpace.s8),
         child: Row(
           children: [
             SizedBox(
-              width: 30,
+              width: VistaSize.guideNumber,
               child: Text(
                 '${c.number}',
-                style: t.labelLarge?.copyWith(color: VistaColors.textTertiary),
+                style: t.labelLarge?.copyWith(
+                  color: VistaColors.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
             ),
-            Container(
-              width: 76,
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFF141922),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: VistaColors.glassBorder),
-              ),
-              alignment: Alignment.center,
-              child: ChannelLogo(channel: c, size: 40),
-            ),
-            const SizedBox(width: 12),
+            ChannelLogo(channel: c, size: VistaSize.minTouch),
+            const SizedBox(width: VistaSpace.s12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -728,23 +701,24 @@ class _LiveScreenState extends State<LiveScreen> {
                           c.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: t.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: t.titleSmall,
                         ),
                       ),
                       if (user.isFavorite(UserKey.channel(c.key))) ...[
-                        const SizedBox(width: 4),
+                        const SizedBox(width: VistaSpace.s4),
                         const Icon(
                           Icons.star_rounded,
-                          size: 15,
-                          color: VistaColors.accent,
+                          size: VistaSize.iconSmall,
+                          color: VistaColors.textSecondary,
+                          semanticLabel: 'Preferito',
                         ),
                       ],
                     ],
                   ),
                   Text(
-                    now == null ? c.group : '${hhmm(now.start)}  ${now.title}',
+                    now == null
+                        ? 'Nessuna informazione'
+                        : '${hhmm(now.start)}  ${now.title}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: t.bodySmall?.copyWith(
@@ -752,15 +726,8 @@ class _LiveScreenState extends State<LiveScreen> {
                     ),
                   ),
                   if (now != null) ...[
-                    const SizedBox(height: 5),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(99),
-                      child: LinearProgressIndicator(
-                        value: now.progressAt(_now),
-                        minHeight: 3,
-                        backgroundColor: VistaColors.glassActive,
-                      ),
-                    ),
+                    const SizedBox(height: VistaSpace.s4),
+                    VistaProgressBar(now.progressAt(_now)),
                   ],
                 ],
               ),
@@ -772,6 +739,24 @@ class _LiveScreenState extends State<LiveScreen> {
   }
 }
 
+/// Ritaglia solo ai lati, lasciando [overhang] per l'anello a sinistra; sopra
+/// e sotto non taglia.
+class _SidesOnly extends CustomClipper<Rect> {
+  const _SidesOnly(this.overhang);
+  final double overhang;
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(
+    -overhang,
+    -VistaSpace.s64,
+    size.width,
+    size.height + VistaSpace.s64,
+  );
+
+  @override
+  bool shouldReclip(_SidesOnly old) => old.overhang != overhang;
+}
+
 class _ActionRow extends StatelessWidget {
   const _ActionRow(this.icon, this.label);
   final IconData icon;
@@ -779,9 +764,13 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
+    padding: const EdgeInsets.symmetric(vertical: VistaSpace.s8),
     child: Row(
-      children: [Icon(icon, size: 22), const SizedBox(width: 14), Text(label)],
+      children: [
+        Icon(icon, size: VistaSize.icon),
+        const SizedBox(width: VistaSpace.s16),
+        Flexible(child: Text(label)),
+      ],
     ),
   );
 }

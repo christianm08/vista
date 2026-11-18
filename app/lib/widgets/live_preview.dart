@@ -145,40 +145,36 @@ class _LivePreviewState extends State<LivePreview> {
     final c = widget.channel;
     final t = Theme.of(context).textTheme;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.black,
-          border: Border.all(color: VistaColors.glassBorder),
-          borderRadius: BorderRadius.circular(18),
-        ),
+      borderRadius: BorderRadius.circular(VistaRadius.card),
+      child: ColoredBox(
+        color: VistaColors.video,
         child: Stack(
           fit: StackFit.expand,
           children: [
             if (_video != null && widget.enabled)
               Video(controller: _video!, controls: NoVideoControls),
+            // Finché non arrivano fotogrammi: tinta piatta col logo.
             if (!_playing && c != null)
               ColoredBox(
-                color: const Color(0xFF0B0E13),
+                color: VistaColors.surface,
                 child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ChannelLogo(channel: c, size: 56),
-                      const SizedBox(height: 10),
-                      if (_failed)
+                      ChannelLogo(
+                        channel: c,
+                        size: VistaSize.channelLogoCard,
+                        boxed: false,
+                      ),
+                      if (_failed) ...[
+                        const SizedBox(height: VistaSpace.s8),
                         Text(
                           'Anteprima non disponibile',
                           style: t.bodySmall?.copyWith(
-                            color: VistaColors.textTertiary,
+                            color: VistaColors.textSecondary,
                           ),
-                        )
-                      else
-                        const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
+                      ],
                     ],
                   ),
                 ),

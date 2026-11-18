@@ -27,7 +27,7 @@ class LiveChannelList extends StatelessWidget {
   });
 
   /// Altezza di una riga, per centrare il canale in onda.
-  static const rowHeight = 64.0;
+  static const rowHeight = VistaSize.playerChannelRow;
 
   final bool open;
   final List<Channel> channels;
@@ -44,21 +44,26 @@ class LiveChannelList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final layout = VistaLayout.of(context);
     return IgnorePointer(
       ignoring: !open,
       child: ExcludeFocus(
         excluding: !open,
         child: AnimatedOpacity(
           opacity: open ? 1 : 0,
-          duration: const Duration(milliseconds: 180),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? VistaMotion.reducedFade
+              : VistaMotion.overlayFade,
           child: Row(
             children: [
+              // Pannello opaco: niente video che passa sotto il testo.
               Container(
-                width: 360,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xF2080A0E), Color(0xD9080A0E)],
-                  ),
+                width: VistaSize.playerChannelList + layout.safe.left,
+                color: VistaColors.surface,
+                padding: EdgeInsets.only(
+                  left: layout.safe.left,
+                  top: layout.safe.top,
+                  bottom: layout.safe.bottom,
                 ),
                 child: SafeArea(
                   right: false,
@@ -66,17 +71,21 @@ class LiveChannelList extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                        padding: const EdgeInsets.fromLTRB(
+                          VistaSpace.s24,
+                          VistaSpace.s24,
+                          VistaSpace.s24,
+                          VistaSpace.s12,
+                        ),
                         child: Row(
                           children: [
-                            Text(
-                              'Canali',
-                              style: t.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w800,
+                            Text('Canali', style: t.headlineSmall),
+                            const Spacer(),
+                            VistaClock(
+                              style: t.labelLarge?.copyWith(
+                                color: VistaColors.textSecondary,
                               ),
                             ),
-                            const Spacer(),
-                            const VistaClock(),
                           ],
                         ),
                       ),
@@ -84,7 +93,10 @@ class LiveChannelList extends StatelessWidget {
                         child: ListView.builder(
                           controller: scroll,
                           itemExtent: rowHeight,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: VistaSpace.s16,
+                            vertical: VistaSpace.s8,
+                          ),
                           itemCount: channels.length,
                           itemBuilder: (context, i) => _item(t, i),
                         ),
@@ -112,31 +124,31 @@ class LiveChannelList extends StatelessWidget {
     final onNow = guide?.nowOn(c, now: now);
     final playing = i == currentIndex;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      // Lo spazio sotto è più largo di quanto sporge l'anello.
+      padding: const EdgeInsets.only(bottom: VistaSpace.s8),
       child: FocusCard(
         focusNode: playing ? currentFocus : null,
-        radius: 12,
-        focusScale: 1.02,
-        fill: playing ? VistaColors.glassActive : Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        radius: VistaRadius.chip,
+        focusScale: 1.0,
+        // Il canale in onda: un gradino più chiaro, come nella guida.
+        fill: playing ? VistaColors.surfaceHigh : VistaColors.surface,
+        padding: const EdgeInsets.symmetric(horizontal: VistaSpace.s8),
         onTap: () => onPick(i),
         onLongPress: () => onToggleFavorite(c),
         child: Row(
           children: [
             SizedBox(
-              width: 34,
+              width: VistaSize.guideNumber,
               child: Text(
                 '${c.number}',
                 style: t.labelLarge?.copyWith(
-                  color: playing
-                      ? VistaColors.accent
-                      : VistaColors.textTertiary,
-                  fontWeight: FontWeight.w800,
+                  color: playing ? VistaColors.text : VistaColors.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ),
-            ChannelLogo(channel: c, size: 38),
-            const SizedBox(width: 10),
+            ChannelLogo(channel: c, size: VistaSize.playerChannelLogo),
+            const SizedBox(width: VistaSpace.s12),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -146,7 +158,7 @@ class LiveChannelList extends StatelessWidget {
                     c.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                    style: t.titleSmall,
                   ),
                   if (onNow != null)
                     Text(
@@ -154,7 +166,7 @@ class LiveChannelList extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: t.bodySmall?.copyWith(
-                        color: VistaColors.textTertiary,
+                        color: VistaColors.textSecondary,
                       ),
                     ),
                 ],
@@ -163,8 +175,9 @@ class LiveChannelList extends StatelessWidget {
             if (isFavorite(c))
               const Icon(
                 Icons.star_rounded,
-                size: 18,
-                color: VistaColors.accent,
+                size: VistaSize.iconSmall,
+                color: VistaColors.textSecondary,
+                semanticLabel: 'Preferito',
               ),
           ],
         ),

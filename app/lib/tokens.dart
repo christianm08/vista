@@ -58,6 +58,9 @@ abstract final class VistaColors {
 
   static const transparent = Color(0x00000000);
 
+  /// Fondo del video (bande sopra e sotto): nero vero, non il fondo.
+  static const video = Color(0xFF000000);
+
   // --- Nomi dello stile "Vetro", tenuti finché le schermate non sono migrate
   // (fasi 3–6) e rimossi nella fase 7. Puntano ai nuovi token.
   static const teal = accent;
@@ -113,6 +116,15 @@ abstract final class VistaScrims {
     Color(0xFFFFFFFF),
   ];
   static const detailFadeStops = [0.0, 0.06, 0.2, 0.36, 0.55];
+
+  /// Player: velo sotto la barra del programma, dal basso. Il testo sta
+  /// nella parte coperta almeno al 90% (funzionale: il video è sotto).
+  static const playerBottomColors = [
+    Color(0xF20C0D0C),
+    Color(0xE60C0D0C),
+    Color(0x000C0D0C),
+  ];
+  static const playerBottomStops = [0.0, 0.6, 1.0];
 }
 
 /// Spaziature. Nessun altro valore.
@@ -198,6 +210,28 @@ abstract final class VistaSize {
   /// Guida: altezza della riga e colonna dei canali.
   static const guideRow = 48.0;
   static const guideChannelColumn = 200.0;
+
+  /// Guida: asse orario, logo e numero nella colonna dei canali, linea
+  /// "adesso" e il suo punto sull'asse.
+  static const guideRuler = 24.0;
+  static const guideLogo = 36.0;
+  static const guideNumber = 32.0;
+  static const guideNowLine = 2.0;
+  static const guideNowDot = 10.0;
+
+  /// Live TV: anteprima del canale a fuoco (wide) e barra del programma.
+  static const livePreview = Size(352, 198);
+  static const liveProgress = 220.0;
+
+  /// Player: logo nella barra del programma, elenco rapido dei canali,
+  /// pannello delle opzioni, riga dell'elenco, testo dei messaggi.
+  static const playerLogo = 56.0;
+  static const playerChannelList = 360.0;
+  static const playerChannelRow = 64.0;
+  static const playerChannelLogo = 40.0;
+  static const playerOptions = 400.0;
+  static const playerMessage = 420.0;
+  static const playerTypedName = 260.0;
 
   /// Zona fissa dell'anteprima in Home (wide) e riquadro in evidenza (telefono).
   static const homePreview = 300.0;
@@ -297,6 +331,10 @@ abstract final class VistaMotion {
 
   /// Overlay del player e messaggi brevi.
   static const overlayAutoHide = Duration(seconds: 4);
+
+  /// Comparsa e uscita di overlay e pannelli del player (solo opacità e
+  /// spostamento).
+  static const overlayFade = Duration(milliseconds: 200);
   static const toast = Duration(seconds: 2);
 
   static const enter = Easing.emphasizedDecelerate;

@@ -6,6 +6,8 @@ import 'package:vista_resolver/vista_resolver.dart';
 
 import '../theme.dart';
 import 'channel_logo.dart';
+import 'vista_cards.dart';
+import 'vista_focus.dart';
 
 String hhmm(DateTime t) {
   final l = t.toLocal();
@@ -41,23 +43,24 @@ EpgProgramme? programmeAt(List<EpgProgramme> list, DateTime t) {
   return null;
 }
 
-/// Misure della guida: una TV 1080p ha 960 punti logici di larghezza.
+/// Misure della guida. Cambia solo l'ampiezza della finestra oraria: due ore
+/// e mezza sulla tela TV, tre ore su finestre larghe.
 class GuideMetrics {
-  const GuideMetrics._(
-    this.channelWidth,
-    this.minutes,
-    this.rowHeight,
-    this.logo,
-  );
+  const GuideMetrics._(this.minutes);
 
-  factory GuideMetrics.of(double width) => width < 1200
-      ? const GuideMetrics._(210, 120, 54, 34)
-      : const GuideMetrics._(280, 180, 64, 42);
+  factory GuideMetrics.of(double width) =>
+      width < 1200 ? const GuideMetrics._(150) : const GuideMetrics._(180);
 
-  final double channelWidth;
   final int minutes;
-  final double rowHeight;
-  final double logo;
+
+  static const channelWidth = VistaSize.guideChannelColumn;
+
+  /// Una riga della lista: la cella più lo spazio sotto, che è più largo di
+  /// quanto sporge l'anello della cella a fuoco.
+  static const rowHeight = VistaSize.guideRow + gap;
+
+  /// Spazio tra righe, tra celle e tra canale e programmi.
+  static const gap = VistaSpace.s8;
 }
 
 /// Selezione corrente della guida: canale e programma sotto il cursore.
@@ -70,7 +73,8 @@ typedef GuideSelection = ({
 /// Guida TV a griglia, comandata col telecomando come nelle app per TV:
 /// su/giù cambiano canale mantenendo l'orario, sinistra/destra scorrono i
 /// programmi (la finestra oraria segue il cursore), OK guarda il canale,
-/// Menu lo modifica. Sinistra sul programma in onda apre il menu laterale.
+/// Menu lo modifica. Su dalla prima riga e sinistra dal programma in onda
+/// lasciano la guida (verso i filtri e la barra laterale).
 class EpgGrid extends StatefulWidget {
   const EpgGrid({
     super.key,
@@ -81,7 +85,7 @@ class EpgGrid extends StatefulWidget {
     required this.onSelectionChanged,
     required this.onPlay,
     required this.onEdit,
-    required this.onOpenMenu,
+    this.onExitTop,
   });
 
   final List<Channel> channels;
@@ -91,7 +95,10 @@ class EpgGrid extends StatefulWidget {
   final ValueChanged<GuideSelection> onSelectionChanged;
   final ValueChanged<Channel> onPlay;
   final ValueChanged<Channel> onEdit;
-  final VoidCallback onOpenMenu;
+
+  /// Su dalla prima riga: dove va il fuoco (es. il filtro scelto). Senza,
+  /// decide la geometria.
+  final VoidCallback? onExitTop;
 
   @override
   State<EpgGrid> createState() => _EpgGridState();
@@ -140,7 +147,12 @@ class _EpgGridState extends State<EpgGrid> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _notify());
     }
     // Il tempo passa: il cursore non resta nel passato.
-    if (_cursor.isBefore(widget.now)) _cursor = widget.now;
+    if (_cursor.isBefore(widget.now)) {
+      _cursor = widget.now;
+      // L'intestazione passa al programma ora in onda, non resta su
+      // quello appena finito.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _notify());
+    }
     final floor = floorHalfHour(widget.now);
     if (_windowStart.isBefore(floor)) _windowStart = floor;
   }
@@ -180,7 +192,7 @@ class _EpgGridState extends State<EpgGrid> {
 
   void _ensureVisible() {
     if (!_scroll.hasClients) return;
-    final h = _metrics.rowHeight;
+    const h = GuideMetrics.rowHeight;
     final pos = _scroll.position;
     final top = _row * h;
     // Tiene una riga di margine sopra e sotto, come le guide TV.
@@ -236,6 +248,13 @@ class _EpgGridState extends State<EpgGrid> {
     if (k == LogicalKeyboardKey.arrowDown) {
       _moveRow(1);
     } else if (k == LogicalKeyboardKey.arrowUp) {
+      // Dalla prima riga si sale ai filtri.
+      if (_row == 0) {
+        final exit = widget.onExitTop;
+        if (exit == null) return KeyEventResult.ignored;
+        if (e is KeyDownEvent) exit();
+        return KeyEventResult.handled;
+      }
       _moveRow(-1);
     } else if (k == LogicalKeyboardKey.channelDown ||
         k == LogicalKeyboardKey.pageDown) {
@@ -246,7 +265,8 @@ class _EpgGridState extends State<EpgGrid> {
     } else if (k == LogicalKeyboardKey.arrowRight) {
       _moveTime(1);
     } else if (k == LogicalKeyboardKey.arrowLeft) {
-      if (!_moveTime(-1) && e is KeyDownEvent) widget.onOpenMenu();
+      // Sul programma in onda si esce verso la barra laterale.
+      if (!_moveTime(-1)) return KeyEventResult.ignored;
     } else if (e is KeyDownEvent &&
         (k == LogicalKeyboardKey.select ||
             k == LogicalKeyboardKey.enter ||
@@ -289,41 +309,60 @@ class _EpgGridState extends State<EpgGrid> {
       child: LayoutBuilder(
         builder: (context, box) {
           _metrics = GuideMetrics.of(box.maxWidth);
-          final timelineWidth = box.maxWidth - _metrics.channelWidth;
+          const left = GuideMetrics.channelWidth + GuideMetrics.gap;
+          final timelineWidth = box.maxWidth - left;
           final px = timelineWidth / _metrics.minutes;
+          final nowX = widget.now.difference(_windowStart).inSeconds / 60 * px;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _Ruler(
                 start: _windowStart,
                 minutes: _metrics.minutes,
-                now: widget.now,
-                channelWidth: _metrics.channelWidth,
+                nowX: nowX,
                 pxPerMinute: px,
               ),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, rows) {
-                    _visibleRows = (rows.maxHeight / _metrics.rowHeight)
+                    _visibleRows = (rows.maxHeight / GuideMetrics.rowHeight)
                         .floor();
-                    return ListView.builder(
-                      controller: _scroll,
-                      itemExtent: _metrics.rowHeight,
-                      itemCount: widget.channels.length,
-                      padding: EdgeInsets.zero,
-                      itemBuilder: (_, i) => _Row(
-                        channel: widget.channels[i],
-                        programmes: _programmes(widget.channels[i]),
-                        metrics: _metrics,
-                        windowStart: _windowStart,
-                        pxPerMinute: px,
-                        now: widget.now,
-                        selected: i == _row,
-                        focused: _focused,
-                        cursor: _cursor,
-                        onTap: (at) => _tapRow(i, at),
-                        onLongPress: () => widget.onEdit(widget.channels[i]),
-                      ),
+                    return Stack(
+                      children: [
+                        ListView.builder(
+                          controller: _scroll,
+                          itemExtent: GuideMetrics.rowHeight,
+                          itemCount: widget.channels.length,
+                          // Sopra la prima riga, spazio per l'anello.
+                          padding: const EdgeInsets.only(top: GuideMetrics.gap),
+                          itemBuilder: (_, i) => _Row(
+                            key: ValueKey(widget.channels[i].key),
+                            channel: widget.channels[i],
+                            programmes: _programmes(widget.channels[i]),
+                            minutes: _metrics.minutes,
+                            windowStart: _windowStart,
+                            pxPerMinute: px,
+                            now: widget.now,
+                            selected: i == _row,
+                            focused: _focused,
+                            cursor: _cursor,
+                            onTap: (at) => _tapRow(i, at),
+                            onLongPress: () =>
+                                widget.onEdit(widget.channels[i]),
+                          ),
+                        ),
+                        // Linea "adesso": una sola, sopra tutte le righe.
+                        if (nowX >= 0 && nowX <= timelineWidth)
+                          Positioned(
+                            left: left + nowX - VistaSize.guideNowLine / 2,
+                            top: 0,
+                            bottom: 0,
+                            width: VistaSize.guideNowLine,
+                            child: const IgnorePointer(
+                              child: ColoredBox(color: VistaColors.accent),
+                            ),
+                          ),
+                      ],
                     );
                   },
                 ),
@@ -336,89 +375,64 @@ class _EpgGridState extends State<EpgGrid> {
   }
 }
 
+/// Asse orario: il giorno sopra la colonna dei canali, le mezz'ore e il
+/// punto "adesso" da cui scende la linea.
 class _Ruler extends StatelessWidget {
   const _Ruler({
     required this.start,
     required this.minutes,
-    required this.now,
-    required this.channelWidth,
+    required this.nowX,
     required this.pxPerMinute,
   });
 
   final DateTime start;
   final int minutes;
-  final DateTime now;
-  final double channelWidth;
+  final double nowX;
   final double pxPerMinute;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final meta = t.bodySmall?.copyWith(
+      color: VistaColors.textSecondary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     final today = DateUtils.isSameDay(start, DateTime.now());
     const days = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'];
-    final nowX = now.difference(start).inSeconds / 60 * pxPerMinute;
     return SizedBox(
-      height: 30,
+      height: VistaSize.guideRuler,
       child: Row(
         children: [
           SizedBox(
-            width: channelWidth,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: Text(
-                today ? 'Oggi' : '${days[start.weekday - 1]} ${start.day}',
-                style: t.labelLarge?.copyWith(
-                  color: VistaColors.accent,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+            width: GuideMetrics.channelWidth + GuideMetrics.gap,
+            child: Text(
+              today ? 'Oggi' : '${days[start.weekday - 1]} ${start.day}',
+              style: meta,
             ),
           ),
           Expanded(
             child: Stack(
-              clipBehavior: Clip.hardEdge,
+              clipBehavior: Clip.none,
               children: [
                 for (var m = 0; m < minutes; m += 30)
                   Positioned(
                     left: m * pxPerMinute,
-                    top: 4,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 1,
-                          height: 14,
-                          color: VistaColors.glassBorder,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          hhmm(start.add(Duration(minutes: m))),
-                          style: t.labelMedium?.copyWith(
-                            color: VistaColors.textSecondary,
-                          ),
-                        ),
-                      ],
+                    top: 0,
+                    child: Text(
+                      hhmm(start.add(Duration(minutes: m))),
+                      style: meta,
                     ),
                   ),
                 if (nowX >= 0)
                   Positioned(
-                    left: math.max(0, nowX - 22),
+                    left: nowX - VistaSize.guideNowDot / 2,
                     bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 1,
-                      ),
+                    width: VistaSize.guideNowDot,
+                    height: VistaSize.guideNowDot,
+                    child: const DecoratedBox(
                       decoration: BoxDecoration(
                         color: VistaColors.accent,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        hhmm(now),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: VistaColors.onPrimary,
-                        ),
+                        shape: BoxShape.circle,
                       ),
                     ),
                   ),
@@ -433,9 +447,10 @@ class _Ruler extends StatelessWidget {
 
 class _Row extends StatelessWidget {
   const _Row({
+    super.key,
     required this.channel,
     required this.programmes,
-    required this.metrics,
+    required this.minutes,
     required this.windowStart,
     required this.pxPerMinute,
     required this.now,
@@ -448,7 +463,7 @@ class _Row extends StatelessWidget {
 
   final Channel channel;
   final List<EpgProgramme> programmes;
-  final GuideMetrics metrics;
+  final int minutes;
   final DateTime windowStart;
   final double pxPerMinute;
   final DateTime now;
@@ -462,7 +477,7 @@ class _Row extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final active = selected && focused;
-    final end = windowStart.add(Duration(minutes: metrics.minutes));
+    final end = windowStart.add(Duration(minutes: minutes));
     final visible = [
       for (final p in programmes)
         if (p.stop.isAfter(windowStart) && p.start.isBefore(end)) p,
@@ -472,77 +487,68 @@ class _Row extends StatelessWidget {
         d.difference(windowStart).inSeconds / 60 * pxPerMinute;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 3),
+      padding: const EdgeInsets.only(bottom: GuideMetrics.gap),
       child: Row(
-        // Canale e programmi alti uguali: tutta l'altezza della riga.
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Colonna del canale
+          // Colonna del canale: numero, logo, nome.
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => onTap(null),
             onLongPress: onLongPress,
-            child: Container(
-              width: metrics.channelWidth,
-              margin: const EdgeInsets.only(right: 3),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color: active
-                    ? VistaColors.glassActive
-                    : (selected
-                          ? VistaColors.glassHigh
-                          : const Color(0x0DFFFFFF)),
-                borderRadius: BorderRadius.circular(10),
-                border: Border(
-                  left: BorderSide(
-                    color: active ? VistaColors.accent : Colors.transparent,
-                    width: 3,
-                  ),
-                ),
-              ),
+            child: SizedBox(
+              width: GuideMetrics.channelWidth,
               child: Row(
                 children: [
                   SizedBox(
-                    width: 34,
+                    width: VistaSize.guideNumber,
                     child: Text(
                       '${channel.number}',
+                      maxLines: 1,
                       style: t.labelLarge?.copyWith(
-                        color: active ? Colors.white : VistaColors.textTertiary,
-                        fontWeight: FontWeight.w700,
+                        color: active
+                            ? VistaColors.text
+                            : VistaColors.textSecondary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ),
-                  ChannelLogo(channel: channel, size: metrics.logo),
-                  const SizedBox(width: 10),
+                  ChannelLogo(channel: channel, size: VistaSize.guideLogo),
+                  const SizedBox(width: VistaSpace.s12),
                   Expanded(
                     child: Text(
                       channel.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: t.bodyMedium?.copyWith(
-                        fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-                      ),
+                      style: t.titleSmall,
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          // Programmi
+          const SizedBox(width: GuideMetrics.gap),
+          // Programmi, larghi quanto durano. Nessun ritaglio: le celle
+          // stanno già dentro la finestra e l'anello resta visibile.
           Expanded(
             child: LayoutBuilder(
               builder: (context, c) {
                 if (visible.isEmpty) {
-                  return _Cell(
-                    title: 'Nessuna informazione',
-                    selected: active,
-                    onAir: false,
-                    progress: 0,
-                    muted: true,
-                    onTap: () => onTap(null),
+                  // Lo spazio a destra, come le altre celle: l'anello
+                  // resta dentro la guida.
+                  return Padding(
+                    padding: const EdgeInsets.only(right: GuideMetrics.gap),
+                    child: _Cell(
+                      title: 'Nessuna informazione',
+                      active: active,
+                      onAir: false,
+                      muted: true,
+                      onTap: () => onTap(null),
+                    ),
                   );
                 }
                 return Stack(
-                  clipBehavior: Clip.hardEdge,
+                  clipBehavior: Clip.none,
                   children: [
                     for (final p in visible)
                       () {
@@ -550,28 +556,22 @@ class _Row extends StatelessWidget {
                         final right = math.min(c.maxWidth, x(p.stop));
                         return Positioned(
                           left: left,
-                          width: math.max(0.0, right - left - 3),
+                          width: math.max(0.0, right - left - GuideMetrics.gap),
                           top: 0,
                           bottom: 0,
                           child: _Cell(
                             title: p.title,
-                            selected: active && identical(p, current),
+                            time: '${hhmm(p.start)} – ${hhmm(p.stop)}',
+                            shortTime: hhmm(p.start),
+                            active: active && identical(p, current),
                             highlighted:
                                 selected && !focused && identical(p, current),
                             onAir: p.isOnAt(now),
-                            progress: p.progressAt(now),
                             onTap: () =>
                                 onTap(p.start.isBefore(now) ? now : p.start),
                           ),
                         );
                       }(),
-                    Positioned(
-                      left: x(now),
-                      top: 0,
-                      bottom: 0,
-                      width: 2,
-                      child: const ColoredBox(color: VistaColors.accent),
-                    ),
                   ],
                 );
               },
@@ -583,106 +583,114 @@ class _Row extends StatelessWidget {
   }
 }
 
+/// Cella di un programma: superficie, un gradino più chiara se è in onda,
+/// la più chiara con anello se è a fuoco. Niente scala.
 class _Cell extends StatelessWidget {
   const _Cell({
     required this.title,
-    required this.selected,
+    required this.active,
     required this.onAir,
-    required this.progress,
     required this.onTap,
+    this.time,
+    this.shortTime,
     this.highlighted = false,
     this.muted = false,
   });
 
   final String title;
-  final bool selected;
+  final String? time;
+  final String? shortTime;
+  final bool active;
   final bool highlighted;
   final bool onAir;
-  final double progress;
   final bool muted;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final fill = selected
-        ? Colors.white
-        : highlighted
-        ? VistaColors.glassActive
-        : (onAir ? const Color(0x1FFFFFFF) : const Color(0x0DFFFFFF));
+    final rest = highlighted
+        ? VistaColors.surfaceSelected
+        : (onAir ? VistaColors.surfaceHigh : VistaColors.surface);
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        clipBehavior: Clip.hardEdge,
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Parte già andata in onda, appena più scura.
-            if (onAir && !selected)
-              FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: progress,
-                child: const ColoredBox(color: Color(0x0FFFFFFF)),
-              ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
+      child: VistaFocusEffect(
+        active: active,
+        kind: VistaFocusKind.flat,
+        radius: VistaRadius.chip,
+        fill: rest,
+        activeFill: VistaColors.surfaceSelected,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(VistaRadius.chip),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: VistaSpace.s12),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: t.bodyMedium?.copyWith(
-                    fontWeight: selected || onAir
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                    color: selected
-                        ? VistaColors.onPrimary
-                        : (muted ? VistaColors.textTertiary : Colors.white),
+                  softWrap: false,
+                  style: t.labelLarge?.copyWith(
+                    fontWeight: VistaType.strong,
+                    color: muted ? VistaColors.textSecondary : VistaColors.text,
                   ),
                 ),
-              ),
+                if (time != null)
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final style = t.bodySmall?.copyWith(
+                        color: active
+                            ? VistaColors.textBody
+                            : VistaColors.textSecondary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      );
+                      // Nelle celle strette solo l'inizio: un orario
+                      // tagliato a metà ("20:45 – 2") non si legge.
+                      final full = TextPainter(
+                        text: TextSpan(text: time, style: style),
+                        maxLines: 1,
+                        textDirection: TextDirection.ltr,
+                        textScaler: MediaQuery.textScalerOf(context),
+                      )..layout();
+                      final fits = full.width <= box.maxWidth;
+                      full.dispose();
+                      return Text(
+                        fits ? time! : shortTime ?? time!,
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        softWrap: false,
+                        style: style,
+                      );
+                    },
+                  ),
+              ],
             ),
-            if (onAir)
-              Positioned(
-                left: 0,
-                bottom: 0,
-                height: 3,
-                width: null,
-                right: 0,
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: progress,
-                  child: const ColoredBox(color: VistaColors.accent),
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Intestazione della guida: dettagli del programma selezionato e, a destra,
-/// l'anteprima del canale.
-class GuideHeader extends StatelessWidget {
-  const GuideHeader({
+/// Canale a fuoco nella guida (TV e PC): anteprima dal vivo a sinistra;
+/// a destra canale, programma, orario con avanzamento, trama e qualità.
+class LiveHeader extends StatelessWidget {
+  const LiveHeader({
     super.key,
     required this.selection,
     required this.now,
     required this.preview,
-    this.category,
     this.status = '',
   });
 
   final GuideSelection? selection;
   final DateTime now;
   final Widget preview;
-  final String? category;
+
+  /// Stato dell'EPG (es. "Scarico la guida…") quando manca il programma.
   final String status;
 
   @override
@@ -690,138 +698,180 @@ class GuideHeader extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final s = selection;
     final p = s?.programme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 24, 8),
-            child: s == null
-                ? const SizedBox.shrink()
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        (category ?? 'Tutti i canali').toUpperCase(),
-                        style: t.labelMedium?.copyWith(
-                          color: VistaColors.accent,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          ChannelLogo(channel: s.channel, size: 30),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              '${s.channel.number}  ${s.channel.name}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.titleSmall?.copyWith(
-                                color: VistaColors.textSecondary,
-                              ),
-                            ),
+    final onAir = p != null && p.isOnAt(now);
+    final meta = t.labelLarge?.copyWith(
+      color: VistaColors.textSecondary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final about = p == null
+        ? ''
+        : (p.description.isNotEmpty ? p.description : p.subtitle);
+    return SizedBox(
+      height: VistaSize.livePreview.height,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox.fromSize(
+            size: VistaSize.livePreview,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                preview,
+                if (onAir)
+                  const Positioned(
+                    left: VistaSpace.s12,
+                    top: VistaSpace.s12,
+                    child: VistaLabel('IN ONDA', dot: true),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: VistaSpace.s32),
+          if (s != null)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${s.channel.number} · ${s.channel.name}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: meta,
+                  ),
+                  const SizedBox(height: VistaSpace.s8),
+                  Text(
+                    p?.title ?? 'Nessuna informazione',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.headlineLarge,
+                  ),
+                  const SizedBox(height: VistaSpace.s8),
+                  if (p != null)
+                    Row(
+                      children: [
+                        Text('${hhmm(p.start)} – ${hhmm(p.stop)}', style: meta),
+                        if (onAir) ...[
+                          const SizedBox(width: VistaSpace.s12),
+                          SizedBox(
+                            width: VistaSize.liveProgress,
+                            child: VistaProgressBar(p.progressAt(now)),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        p?.title ?? 'Nessuna informazione sul programma',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      if (p != null)
-                        Row(
-                          children: [
-                            Text(
-                              '${hhmm(p.start)} – ${hhmm(p.stop)}',
-                              style: t.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            if (p.isOnAt(now)) ...[
-                              SizedBox(
-                                width: 110,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: LinearProgressIndicator(
-                                    value: p.progressAt(now),
-                                    minHeight: 4,
-                                    backgroundColor: VistaColors.glassActive,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                            ],
-                            Flexible(
-                              child: Text(
-                                [
-                                  remaining(p, now),
-                                  if (p.category.isNotEmpty) p.category,
-                                ].join(' · '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: t.bodySmall?.copyWith(
-                                  color: VistaColors.textSecondary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      else if (status.isNotEmpty)
-                        Text(
-                          status,
-                          style: t.bodySmall?.copyWith(
-                            color: VistaColors.textTertiary,
-                          ),
-                        ),
-                      const SizedBox(height: 8),
-                      if (p != null)
-                        Expanded(
+                        const SizedBox(width: VistaSpace.s12),
+                        Flexible(
                           child: Text(
-                            p.description.isNotEmpty
-                                ? p.description
-                                : p.subtitle,
-                            maxLines: 3,
+                            [
+                              remaining(p, now),
+                              if (p.category.isNotEmpty) p.category,
+                            ].join(' · '),
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: t.bodyMedium?.copyWith(
-                              color: VistaColors.textSecondary,
-                              height: 1.35,
-                            ),
+                            style: meta,
                           ),
                         ),
-                    ],
-                  ),
-          ),
-        ),
-        AspectRatio(
-          aspectRatio: 16 / 9,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              preview,
-              // Orologio in alto a destra, sopra l'anteprima.
-              Positioned(
-                top: 8,
-                right: 12,
-                child: VistaClock(
-                  style: t.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    shadows: const [Shadow(blurRadius: 8, color: Colors.black)],
-                  ),
-                ),
+                      ],
+                    )
+                  else if (status.isNotEmpty)
+                    Text(status, style: meta),
+                  if (about.isNotEmpty) ...[
+                    const SizedBox(height: VistaSpace.s8),
+                    Text(
+                      about,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodyMedium?.copyWith(
+                        color: VistaColors.textBody,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  _Qualities(s.channel),
+                ],
               ),
-            ],
-          ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Qualità disponibili del canale: "Auto" (parte dal flusso migliore) e le
+/// altre. Solo informazione: la scelta si fa nel player.
+class _Qualities extends StatelessWidget {
+  const _Qualities(this.channel);
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    // In ordine, dal migliore, una volta sola.
+    final labels = <String>{
+      for (final s in channel.streams)
+        if (s.quality != Quality.auto) s.quality.label,
+    }.toList();
+    final best = labels.isEmpty ? null : labels.first;
+    final n = channel.streams.length;
+    return Row(
+      children: [
+        _Tag(
+          best == null ? 'Auto' : 'Auto · $best',
+          icon: Icons.check_rounded,
+          strong: true,
         ),
+        for (final l in labels.skip(1)) ...[
+          const SizedBox(width: VistaSpace.s8),
+          _Tag(l),
+        ],
+        if (n > 1) ...[
+          const SizedBox(width: VistaSpace.s12),
+          Flexible(
+            child: Text(
+              '$n flussi uniti in un canale',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
+            ),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+/// Etichetta a forma di chip, non selezionabile.
+class _Tag extends StatelessWidget {
+  const _Tag(this.text, {this.icon, this.strong = false});
+  final String text;
+  final IconData? icon;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final fg = strong ? VistaColors.text : VistaColors.textSecondary;
+    return Container(
+      height: VistaSize.chipCompact,
+      padding: const EdgeInsets.symmetric(horizontal: VistaSpace.s12),
+      decoration: BoxDecoration(
+        color: strong ? VistaColors.surfaceHigh : VistaColors.surface,
+        borderRadius: BorderRadius.circular(VistaRadius.chip),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: VistaSize.iconSmall, color: fg),
+            const SizedBox(width: VistaSpace.s8),
+          ],
+          Text(
+            text,
+            style: t.bodySmall?.copyWith(
+              color: fg,
+              fontWeight: VistaType.strong,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

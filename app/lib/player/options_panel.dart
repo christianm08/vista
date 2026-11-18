@@ -5,6 +5,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../data/user_store.dart';
 import '../theme.dart';
 import '../widgets/focus_card.dart';
+import '../widgets/vista_controls.dart';
 
 /// Una voce del menu del player.
 class PlayerOption {
@@ -50,9 +51,13 @@ class PlayerOptionsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final width = MediaQuery.sizeOf(context).width < 600
-        ? MediaQuery.sizeOf(context).width
-        : 400.0;
+    final layout = VistaLayout.of(context);
+    final width = layout.compact
+        ? layout.width
+        : VistaSize.playerOptions + layout.safe.right;
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : VistaMotion.overlayFade;
     var focusGiven = false;
     return IgnorePointer(
       ignoring: !open,
@@ -60,30 +65,22 @@ class PlayerOptionsPanel extends StatelessWidget {
         excluding: !open,
         child: Stack(
           children: [
+            // Tocco fuori dal pannello: chiude. Nessun velo sul video.
             Positioned.fill(
-              child: AnimatedOpacity(
-                opacity: open ? 1 : 0,
-                duration: const Duration(milliseconds: 160),
-                child: GestureDetector(
-                  onTap: onClose,
-                  child: const ColoredBox(color: Color(0x66000000)),
-                ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onClose,
               ),
             ),
             AnimatedPositioned(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutCubic,
-              right: open ? 0 : -width - 20,
+              duration: duration,
+              curve: VistaMotion.enter,
+              right: open ? 0 : -width,
               top: 0,
               bottom: 0,
               width: width,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: Color(0xF20B0E13),
-                  border: Border(
-                    left: BorderSide(color: VistaColors.glassBorder),
-                  ),
-                ),
+              child: ColoredBox(
+                color: VistaColors.surface,
                 child: SafeArea(
                   left: false,
                   // Uno scope nuovo a ogni apertura: l'autofocus funziona
@@ -91,41 +88,55 @@ class PlayerOptionsPanel extends StatelessWidget {
                   child: FocusScope(
                     key: ValueKey(open),
                     child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        VistaSpace.s16,
+                        VistaSpace.s24 + layout.safe.top,
+                        VistaSpace.s16 + layout.safe.right,
+                        VistaSpace.s24 + layout.safe.bottom,
+                      ),
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                title,
-                                style: t.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w800,
+                        Padding(
+                          padding: const EdgeInsets.only(left: VistaSpace.s8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: t.headlineSmall,
                                 ),
                               ),
-                            ),
-                            IconButton(
-                              tooltip: 'Chiudi',
-                              onPressed: onClose,
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                          ],
+                              VistaIconButton(
+                                icon: Icons.close_rounded,
+                                tooltip: 'Chiudi',
+                                onPressed: onClose,
+                              ),
+                            ],
+                          ),
                         ),
                         for (final s in sections)
                           if (s.options.isNotEmpty) ...[
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
+                              padding: const EdgeInsets.fromLTRB(
+                                VistaSpace.s8,
+                                VistaSpace.s24,
+                                VistaSpace.s8,
+                                VistaSpace.s8,
+                              ),
                               child: Text(
                                 s.title.toUpperCase(),
                                 style: t.labelSmall?.copyWith(
-                                  color: VistaColors.textTertiary,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.2,
+                                  color: VistaColors.textSecondary,
                                 ),
                               ),
                             ),
                             for (final o in s.options)
                               Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
+                                // Più largo di quanto sporge l'anello.
+                                padding: const EdgeInsets.only(
+                                  bottom: VistaSpace.s8,
+                                ),
                                 child: FocusCard(
                                   autofocus:
                                       open &&
@@ -133,60 +144,17 @@ class PlayerOptionsPanel extends StatelessWidget {
                                           (o.selected || o.icon != null)
                                       ? (focusGiven = true)
                                       : false,
-                                  radius: 12,
+                                  radius: VistaRadius.chip,
                                   focusScale: 1.0,
-                                  outline: false,
                                   fill: o.selected
-                                      ? VistaColors.glassActive
-                                      : Colors.transparent,
+                                      ? VistaColors.surfaceHigh
+                                      : VistaColors.surface,
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
+                                    horizontal: VistaSpace.s12,
+                                    vertical: VistaSpace.s8,
                                   ),
                                   onTap: o.onTap,
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        o.icon ??
-                                            (o.selected
-                                                ? Icons.radio_button_checked
-                                                : Icons.radio_button_off),
-                                        size: 20,
-                                        color: o.selected || o.icon != null
-                                            ? VistaColors.accent
-                                            : VistaColors.textTertiary,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              o.label,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontWeight: o.selected
-                                                    ? FontWeight.w800
-                                                    : FontWeight.w600,
-                                              ),
-                                            ),
-                                            if (o.detail.isNotEmpty)
-                                              Text(
-                                                o.detail,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: t.bodySmall?.copyWith(
-                                                  color:
-                                                      VistaColors.textTertiary,
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                  child: _OptionRow(o),
                                 ),
                               ),
                           ],
@@ -199,6 +167,55 @@ class PlayerOptionsPanel extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Voce del menu: icona (azione) o spunta (scelta), nome e dettaglio.
+class _OptionRow extends StatelessWidget {
+  const _OptionRow(this.o);
+  final PlayerOption o;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final icon = o.icon ?? (o.selected ? Icons.check_rounded : null);
+    return Row(
+      children: [
+        // Le scelte non selezionate tengono lo stesso rientro.
+        SizedBox(
+          width: VistaSize.icon,
+          child: icon == null
+              ? null
+              : Icon(icon, size: VistaSize.iconSmall, color: VistaColors.text),
+        ),
+        const SizedBox(width: VistaSpace.s12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                o.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.labelLarge?.copyWith(
+                  color: VistaColors.text,
+                  fontWeight: o.selected ? VistaType.strong : null,
+                ),
+              ),
+              if (o.detail.isNotEmpty)
+                Text(
+                  o.detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.bodySmall?.copyWith(
+                    color: VistaColors.textSecondary,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -5,7 +5,8 @@ import 'package:vista_resolver/vista_resolver.dart';
 import '../theme.dart';
 import '../widgets/channel_logo.dart';
 import '../widgets/epg_guide.dart';
-import '../widgets/focus_card.dart';
+import '../widgets/vista_cards.dart';
+import '../widgets/vista_controls.dart';
 import 'stream_picker.dart';
 
 /// Barra in basso del player dal vivo: canale, programma in onda e
@@ -57,182 +58,177 @@ class LiveBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final layout = VistaLayout.of(context);
     final real = qualityFromHeight(height);
-    final wide = MediaQuery.sizeOf(context).width >= 900;
     final upcoming = guide?.upcoming(channel, now: now, count: 2) ?? const [];
     final current = upcoming.where((p) => p.isOnAt(now)).firstOrNull;
     final next = upcoming.where((p) => p.start.isAfter(now)).firstOrNull;
     final previous = this.previous;
+    final meta = t.labelLarge?.copyWith(
+      color: VistaColors.textSecondary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     return Align(
       alignment: Alignment.bottomCenter,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.fromLTRB(
-          wide ? 40 : 16,
-          48,
-          wide ? 40 : 16,
-          wide ? 28 : 16,
-        ),
+      child: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0x00000000), Color(0xE6000000)],
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: VistaScrims.playerBottomColors,
+            stops: VistaScrims.playerBottomStops,
           ),
         ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    '${channel.number}',
-                    style: t.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: VistaColors.accent,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  ChannelLogo(channel: channel, size: 56),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          channel.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.titleMedium?.copyWith(
-                            color: VistaColors.textSecondary,
-                          ),
-                        ),
-                        Text(
-                          current?.title ??
-                              'Nessuna informazione sul programma',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (wide)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const VistaClock(),
-                        Text(
-                          [
-                            picker.auto ? 'Auto' : 'Manuale',
-                            if (picker.streams.length > 1)
-                              'flusso ${picker.index + 1}/${picker.streams.length}',
-                            if (real.isNotEmpty) '$real · ${height}p',
-                          ].join(' · '),
-                          style: t.bodySmall?.copyWith(
-                            color: VistaColors.textTertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-              if (current != null) ...[
-                const SizedBox(height: 12),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            layout.gutter + layout.safe.left,
+            VistaSpace.s64,
+            layout.gutter + layout.safe.right,
+            (layout.compact ? VistaSpace.s16 : VistaSpace.s24) +
+                layout.safe.bottom,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
                   children: [
-                    Text(
-                      hhmm(current.start),
-                      style: t.bodySmall?.copyWith(
-                        color: VistaColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
+                    ChannelLogo(channel: channel, size: VistaSize.playerLogo),
+                    const SizedBox(width: VistaSpace.s16),
                     Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: LinearProgressIndicator(
-                          value: current.progressAt(now),
-                          minHeight: 5,
-                          backgroundColor: VistaColors.glassActive,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${channel.number} · ${channel.name}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: meta,
+                          ),
+                          Text(
+                            current?.title ?? 'Nessuna informazione',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.headlineSmall,
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      hhmm(current.stop),
-                      style: t.bodySmall?.copyWith(
-                        color: VistaColors.textSecondary,
+                    if (!layout.compact)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          VistaClock(style: t.titleLarge),
+                          Text(
+                            [
+                              picker.auto ? 'Auto' : 'Manuale',
+                              if (picker.streams.length > 1)
+                                'flusso ${picker.index + 1}/${picker.streams.length}',
+                              if (real.isNotEmpty) '$real · ${height}p',
+                            ].join(' · '),
+                            style: meta,
+                          ),
+                        ],
                       ),
-                    ),
                   ],
                 ),
-              ],
-              if (next != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Dopo · ${hhmm(next.start)}  ${next.title}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.bodyMedium?.copyWith(
-                    color: VistaColors.textSecondary,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Focus(
-                canRequestFocus: false,
-                skipTraversal: true,
-                onFocusChange: onChipsFocused,
-                onKeyEvent: (_, e) {
-                  if (e is KeyUpEvent) return KeyEventResult.ignored;
-                  if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
-                    onLeaveChips();
-                    return KeyEventResult.handled;
-                  }
-                  // Sotto i pulsanti non c'è altro.
-                  if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
+                if (current != null) ...[
+                  const SizedBox(height: VistaSpace.s12),
+                  Row(
                     children: [
-                      _Chip(
-                        favorite ? '★ Preferito' : '☆ Aggiungi ai preferiti',
-                        onTap: onToggleFavorite,
-                        focusNode: firstChip,
+                      Text(hhmm(current.start), style: meta),
+                      const SizedBox(width: VistaSpace.s12),
+                      Expanded(
+                        child: VistaProgressBar(current.progressAt(now)),
                       ),
-                      _Chip('⚙ Audio, sottotitoli e flussi', onTap: onOptions),
-                      _Chip('▦ Multiview', onTap: onMultiview),
-                      if (previous != null)
-                        _Chip('↩ ${previous.name}', onTap: onPrevious),
-                      if (picker.streams.length > 1) ...[
-                        _Chip(
-                          'Auto',
-                          selected: picker.auto,
-                          onTap: onAutoStream,
-                        ),
-                        for (var i = 0; i < picker.streams.length; i++)
-                          _Chip(
-                            picker.streams[i].quality.label,
-                            selected: !picker.auto && picker.index == i,
-                            onTap: () => onPickStream(i),
-                          ),
-                      ],
+                      const SizedBox(width: VistaSpace.s12),
+                      Text(hhmm(current.stop), style: meta),
                     ],
                   ),
+                ],
+                if (next != null) ...[
+                  const SizedBox(height: VistaSpace.s8),
+                  Text(
+                    'Dopo · ${hhmm(next.start)}  ${next.title}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyMedium?.copyWith(
+                      color: VistaColors.textSecondary,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: VistaSpace.s8),
+                Focus(
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  onFocusChange: onChipsFocused,
+                  onKeyEvent: (_, e) {
+                    if (e is KeyUpEvent) return KeyEventResult.ignored;
+                    if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      onLeaveChips();
+                      return KeyEventResult.handled;
+                    }
+                    // Sotto i pulsanti non c'è altro.
+                    if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    // Spazio e nessun ritaglio in alto e in basso: l'anello
+                    // del pulsante a fuoco resta intero.
+                    clipBehavior: Clip.none,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: VistaSpace.s8,
+                    ),
+                    child: Row(
+                      children: [
+                        _Chip(
+                          favorite ? 'Preferito' : 'Aggiungi ai preferiti',
+                          icon: favorite
+                              ? Icons.star_rounded
+                              : Icons.star_outline_rounded,
+                          onTap: onToggleFavorite,
+                          focusNode: firstChip,
+                        ),
+                        _Chip(
+                          'Audio, sottotitoli e flussi',
+                          icon: Icons.tune_rounded,
+                          onTap: onOptions,
+                        ),
+                        _Chip(
+                          'Multiview',
+                          icon: Icons.grid_view_rounded,
+                          onTap: onMultiview,
+                        ),
+                        if (previous != null)
+                          _Chip(
+                            previous.name,
+                            icon: Icons.undo_rounded,
+                            onTap: onPrevious,
+                          ),
+                        if (picker.streams.length > 1) ...[
+                          _Chip(
+                            'Auto',
+                            selected: picker.auto,
+                            onTap: onAutoStream,
+                          ),
+                          for (var i = 0; i < picker.streams.length; i++)
+                            _Chip(
+                              picker.streams[i].quality.label,
+                              selected: !picker.auto && picker.index == i,
+                              onTap: () => onPickStream(i),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -244,25 +240,26 @@ class _Chip extends StatelessWidget {
   const _Chip(
     this.label, {
     required this.onTap,
+    this.icon,
     this.selected = false,
     this.focusNode,
   });
 
   final String label;
+  final IconData? icon;
   final bool selected;
   final VoidCallback onTap;
   final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(right: 10),
-    child: FocusCard(
-      focusNode: focusNode,
-      radius: 999,
+    padding: const EdgeInsets.only(right: VistaSpace.s8),
+    child: VistaChip(
+      label: label,
+      icon: icon,
       selected: selected,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      onTap: onTap,
-      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+      onSelected: onTap,
+      focusNode: focusNode,
     ),
   );
 }

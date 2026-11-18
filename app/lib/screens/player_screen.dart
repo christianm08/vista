@@ -53,7 +53,7 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   static const _stallTimeout = Duration(seconds: 12);
-  static const _bannerTimeout = Duration(seconds: 5);
+  static const _bannerTimeout = VistaMotion.overlayAutoHide;
 
   /// Nuovi tentativi sullo stesso flusso prima di passare al successivo.
   static const _maxRetries = 2;
@@ -121,7 +121,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(duration: const Duration(seconds: 2), content: Text(text)),
+        SnackBar(duration: VistaMotion.toast, content: Text(text)),
       );
   }
 
@@ -650,7 +650,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: VistaColors.video,
         body: Focus(
           focusNode: _rootFocus,
           autofocus: true,
@@ -694,14 +694,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       alignment: Alignment.topCenter,
                       child: SafeArea(
                         child: Padding(
-                          padding: EdgeInsets.all(16),
+                          padding: EdgeInsets.all(VistaSpace.s16),
                           child: RecBadge(),
                         ),
                       ),
                     ),
                   AnimatedOpacity(
                     opacity: _banner ? 1 : 0,
-                    duration: const Duration(milliseconds: 200),
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? VistaMotion.reducedFade
+                        : VistaMotion.overlayFade,
                     child: IgnorePointer(
                       ignoring: !_banner,
                       child: Stack(
@@ -781,11 +783,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _buildMessage() {
     return Center(
-      child: Glass(
-        padding: const EdgeInsets.all(24),
-        fill: const Color(0xCC10161C),
+      child: Container(
+        padding: const EdgeInsets.all(VistaSpace.s24),
+        decoration: BoxDecoration(
+          color: VistaColors.surface,
+          borderRadius: BorderRadius.circular(VistaRadius.panel),
+        ),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: const BoxConstraints(maxWidth: VistaSize.playerMessage),
           child: Text(_message!, textAlign: TextAlign.center),
         ),
       ),

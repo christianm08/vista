@@ -122,45 +122,55 @@ class TypedChannelNumber extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final match = this.match;
+    final layout = VistaLayout.of(context);
     return Align(
       alignment: Alignment.topRight,
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Glass(
-            fill: const Color(0xE610161C),
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+          padding: EdgeInsets.fromLTRB(
+            0,
+            VistaSpace.s32 + layout.safe.top,
+            VistaSpace.s32 + layout.safe.right,
+            0,
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: VistaSpace.s24,
+              vertical: VistaSpace.s12,
+            ),
+            decoration: BoxDecoration(
+              color: VistaColors.surface,
+              borderRadius: BorderRadius.circular(VistaRadius.panel),
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   typed,
-                  style: t.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: VistaColors.accent,
+                  style: t.headlineLarge?.copyWith(
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: VistaSpace.s16),
                 if (match != null) ...[
-                  ChannelLogo(channel: match, size: 44),
-                  const SizedBox(width: 12),
+                  ChannelLogo(channel: match, size: VistaSize.guideLogo),
+                  const SizedBox(width: VistaSpace.s12),
                   ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 260),
+                    constraints: const BoxConstraints(
+                      maxWidth: VistaSize.playerTypedName,
+                    ),
                     child: Text(
                       match.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: t.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: t.titleMedium,
                     ),
                   ),
                 ] else
                   Text(
                     'Nessun canale',
                     style: t.titleMedium?.copyWith(
-                      color: VistaColors.textTertiary,
+                      color: VistaColors.textSecondary,
                     ),
                   ),
               ],

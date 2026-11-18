@@ -23,15 +23,6 @@ class ChannelLogo extends StatelessWidget {
   /// (card dei canali, anteprima).
   final bool boxed;
 
-  static const _tones = [
-    Color(0xFF1E6B73),
-    Color(0xFF8A4B2E),
-    Color(0xFF4B3A8C),
-    Color(0xFF2F5D3A),
-    Color(0xFF6B2E4F),
-    Color(0xFF2E4A6B),
-  ];
-
   @override
   Widget build(BuildContext context) {
     // L'indice tv-logos arriva da GitHub dopo l'avvio: ridisegna quando c'è.
@@ -42,12 +33,8 @@ class ChannelLogo extends StatelessWidget {
   }
 
   Widget _build(BuildContext context) {
-    final mono = _Monogram(
-      text: channel.monogram,
-      color: _tones[channel.key.hashCode.abs() % _tones.length],
-      size: size,
-    );
-    final r = BorderRadius.circular(size * 0.28);
+    final mono = _Monogram(text: channel.monogram, size: size);
+    final r = BorderRadius.circular(VistaRadius.chip);
     final urls = ChannelLogos.candidates(channel);
     if (urls.isEmpty) return ClipRRect(borderRadius: r, child: mono);
     final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
@@ -67,38 +54,39 @@ class ChannelLogo extends StatelessWidget {
       child: Container(
         width: size,
         height: size,
-        color: VistaColors.glassHigh,
-        padding: EdgeInsets.all(size * 0.12),
+        color: VistaColors.surfaceHigh,
+        padding: EdgeInsets.all(size * _inset),
         child: image(0),
       ),
     );
   }
+
+  /// Margine del logo dentro il riquadro, in frazione del lato.
+  static const _inset = 0.12;
 }
 
+/// Iniziali del canale su superficie neutra: niente colori decorativi.
 class _Monogram extends StatelessWidget {
-  const _Monogram({
-    required this.text,
-    required this.color,
-    required this.size,
-  });
+  const _Monogram({required this.text, required this.size});
   final String text;
-  final Color color;
   final double size;
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
-      color: color,
+      color: VistaColors.surfaceHigh,
       child: Text(
         text,
         maxLines: 1,
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
+        // Il corpo segue il riquadro, che va da 36 a 200 punti.
+        style: t.titleSmall?.copyWith(
+          fontFamily: VistaType.display,
           fontSize: size * (text.length > 3 ? 0.24 : 0.32),
-          color: Colors.white,
+          color: VistaColors.textSecondary,
         ),
       ),
     );
