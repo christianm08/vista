@@ -58,4 +58,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(picked, 'Tre');
   });
+
+  testWidgets('un pulsante disattivato si costruisce senza errori', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildVistaTheme(),
+        home: const Scaffold(
+          body: Center(
+            child: VistaButton.primary(label: 'Salva', onPressed: null),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }

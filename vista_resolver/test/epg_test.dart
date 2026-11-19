@@ -98,6 +98,29 @@ void main() {
     expect(guide.forChannel(channel('Sconosciuto TV')), isEmpty);
   });
 
+  test("il canale della guida scelto dall'utente vince sull'automatico",
+      () async {
+    final guide = EpgGuide([await parseXmltv(chunks(utf8.encode(xmltv)))]);
+    final rai1 = channel('Rai 1', tvgId: 'Rai1.it@HD');
+    expect(guide.matchedId(rai1, now: now), 'Rai.1.HD..101.it');
+
+    final prefs = const ChannelPrefs().setEpg(rai1.key, 'Canale.5.it');
+    final back = ChannelPrefs.fromJson(
+        jsonDecode(jsonEncode(prefs.toJson())) as Map<String, dynamic>);
+    final scelto = back.apply([rai1]).single;
+    expect(scelto.epgId, 'Canale.5.it');
+    expect(guide.nowOn(scelto, now: now)!.title, 'Striscia la notizia');
+    expect(guide.matchedId(scelto, now: now), 'Canale.5.it');
+
+    // Vuoto: si torna all'abbinamento automatico.
+    final auto = back.setEpg(rai1.key, '').apply([rai1]).single;
+    expect(guide.nowOn(auto, now: now)!.title, "L'Eredità");
+
+    // Elenco per la scelta: solo i canali con programmi.
+    expect(guide.channels['Canale.5.it'], 'Canale 5');
+    expect(guide.channels.containsKey('Vuoto.it'), isFalse);
+  });
+
   test('la prima guida con programmi attuali vince sulla seguente', () async {
     final vecchia = await parseXmltv(chunks(utf8.encode(
         '<tv><programme start="20260919200000 +0000" stop="20260919210000 +0000" '

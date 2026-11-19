@@ -715,7 +715,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const _Header('Informazioni'),
                   const _Tile(
                     icon: Icons.info_outline_rounded,
-                    title: 'Vista 0.2',
+                    title: 'Vista 2.0.0',
                     subtitle:
                         'Vista è un lettore: non fornisce né include canali, film o liste. '
                         'Usa solo contenuti che hai il diritto di guardare.',
@@ -791,7 +791,7 @@ class _Tile extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: VistaSpace.s4),
-      child: _Centered(
+      child: VistaCenterOnFocus(
         child: VistaFocusable(
           autofocus: autofocus,
           kind: VistaFocusKind.flat,
@@ -840,29 +840,4 @@ class _Tile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Il fuoco non fa scorrere da solo (VistaTraversalPolicy): l'elenco porta
-/// al centro la voce a fuoco, con l'anello sempre in vista.
-class _Centered extends StatelessWidget {
-  const _Centered({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Focus(
-    canRequestFocus: false,
-    skipTraversal: true,
-    onFocusChange: (has) {
-      if (!has) return;
-      Scrollable.ensureVisible(
-        context,
-        alignment: 0.5,
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : VistaMotion.rowScroll,
-        curve: VistaMotion.enter,
-      );
-    },
-    child: child,
-  );
 }

@@ -17,11 +17,11 @@
 
 ## Scaricare
 
-Ultima versione: **1.0.0**, nella pagina [Releases](https://github.com/christianm08/vista/releases).
+Ultima versione: **2.0.0**, nella pagina [Releases](https://github.com/christianm08/vista/releases).
 
-- **Windows**: scaricare `Vista-1.0.0-windows-x64.zip`, estrarlo in una cartella e avviare `vista.exe`.
+- **Windows**: scaricare `Vista-2.0.0-windows-x64.zip`, estrarlo in una cartella e avviare `vista.exe`.
   L'app non è firmata: Windows SmartScreen può chiedere conferma al primo avvio.
-- **Android, Android TV e Google TV**: scaricare `Vista-1.0.0-android.apk` e installarlo
+- **Android, Android TV e Google TV**: scaricare `Vista-2.0.0-android.apk` e installarlo
   (bisogna consentire l'installazione da origini sconosciute).
 
 Le versioni pubblicate non contengono la chiave TMDB: per la sezione Scopri e la disponibilità
@@ -30,6 +30,11 @@ sui servizi si inserisce la propria in Impostazioni › I miei servizi.
 ---
 
 ## Cosa fa
+
+### Aspetto
+- Interfaccia scura a superfici piene, un solo colore d'accento, titoli in **Bricolage Grotesque** e testo in **Instrument Sans**.
+- Pensata per il **telecomando**: anello bianco attorno all'elemento a fuoco, righe e griglie che lo tengono sempre in vista, barra laterale che su TV si apre spingendo il contenuto.
+- Colori, spazi, raggi, fuoco e animazioni stanno tutti in `app/lib/tokens.dart`; i componenti si vedono nella galleria (`gallery_screen.dart`).
 
 ### Fonti
 - Liste **M3U** da indirizzo o da file, account **Xtream Codes**.
@@ -46,7 +51,7 @@ sui servizi si inserisce la propria in Impostazioni › I miei servizi.
 - Opzione per **riaprire l'ultimo canale** all'avvio.
 - **Promemoria**: dalla guida, sul programma che deve iniziare (tasto Menu), Vista avvisa quando parte.
 - **Registrazione**: del canale che si guarda (menu del player) o programmata dalla guida, salvata così com'è senza ricodificare. Si sceglie la **qualità** (massima, fino a 1080p, 720p o 480p: si registra la versione più leggera che il fornitore offre, per esempio circa 3 GB per 2 ore a 720p), lo **spazio massimo** e se, arrivati al limite, fermarsi o cancellare le registrazioni più vecchie. Sotto 1,5 GB liberi sul disco si ferma comunque.
-- **Gestione canali**: categorie a sinistra e canali a destra, rinomina, logo personalizzato, unione dei doppioni, **numeri personalizzati** (che danno anche l'ordine), **sposta in un'altra categoria** (anche nuova), **nascondi e mostra più canali insieme**.
+- **Gestione canali**: categorie a sinistra e canali a destra, rinomina, logo personalizzato, unione dei doppioni, **numeri personalizzati** (che danno anche l'ordine), **sposta in un'altra categoria** (anche nuova), **nascondi e mostra più canali insieme** (Seleziona, tocco lungo o tasto Menu su un canale), **canale della guida TV** scelto a mano quando l'abbinamento automatico sbaglia.
 - **Categorie**: rinomina, riordina, nascondi (anche per i canali che arriveranno).
 - **Controllo genitori**: PIN su canali, categorie e impostazioni.
 
@@ -95,7 +100,8 @@ app/              App Flutter (Android, Android TV, Windows)
   lib/screens/    Schermate (Home, TV in diretta, Film/Serie, Scopri, Player, Impostazioni…)
   lib/player/     Pezzi del player: barra, elenco canali, menu, scelta del flusso,
                   numero del canale, registrazione, PiP e player esterno
-  lib/widgets/    Componenti (guida a griglia, schede, marchio…)
+  lib/widgets/    Componenti (guida a griglia, schede, righe, griglie, fuoco, marchio…)
+  lib/tokens.dart Design token: colori, spazi, raggi, misure, fuoco, movimento
   tool/           Generatore delle icone
 vista_resolver/   Pacchetto Dart puro: M3U, Xtream, XMLTV, TMDB, unione dei canali
 brand/            Icone (quadrata, arrotondata, circolare), favicon, banner Android TV
@@ -182,4 +188,4 @@ flutter test tool/brand_icons_test.dart --dart-define=VISTA_FONT_DIR=<cartella c
 - Loghi dei canali: [tv-logos](https://github.com/tv-logo/tv-logos), licenza CC BY-NC-SA 4.0.
 - Guida TV: [epg.lat](https://epg.lat) e le guide XMLTV delle fonti.
 - Player: [media_kit](https://github.com/media-kit/media-kit) (libmpv).
-- Carattere: Plus Jakarta Sans (SIL Open Font License).
+- Caratteri: Bricolage Grotesque e Instrument Sans per l'interfaccia, Plus Jakarta Sans per il marchio (SIL Open Font License).

@@ -102,6 +102,7 @@ class Channel {
     this.tvgId = '',
     this.logo = '',
     this.customLogo = '',
+    this.epgId = '',
     this.renamed = false,
     this.hidden = false,
     this.groupHidden = false,
@@ -134,6 +135,10 @@ class Channel {
   /// Logo scelto dall'utente: vince su tutto il resto.
   final String customLogo;
 
+  /// Canale della guida scelto dall'utente (id XMLTV): vince sull'abbinamento
+  /// automatico. Vuoto = automatico.
+  final String epgId;
+
   /// Il nome è stato cambiato dall'utente.
   final bool renamed;
 
@@ -154,6 +159,7 @@ class Channel {
   Channel copyWith({
     String? name,
     String? customLogo,
+    String? epgId,
     bool? renamed,
     bool? hidden,
     int? number,
@@ -172,6 +178,7 @@ class Channel {
         tvgId: tvgId,
         logo: logo,
         customLogo: customLogo ?? this.customLogo,
+        epgId: epgId ?? this.epgId,
         renamed: renamed ?? this.renamed,
         hidden: hidden ?? this.hidden,
         groupHidden: groupHidden ?? this.groupHidden,

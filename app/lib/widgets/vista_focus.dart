@@ -468,6 +468,15 @@ class _VistaStatesFocusEffectState extends State<VistaStatesFocusEffect> {
   }
 
   void _changed() {
+    // Il pulsante (figlio) imposta i suoi stati in initState, mentre si
+    // costruisce: si ridisegna dopo il frame.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _changed();
+      });
+      return;
+    }
     setState(() {});
     _sync();
   }
@@ -513,4 +522,29 @@ class _VistaStatesFocusEffectState extends State<VistaStatesFocusEffect> {
       child: widget.child,
     );
   }
+}
+
+/// Il fuoco non fa scorrere da solo (VistaTraversalPolicy): l'elenco porta
+/// al centro la voce a fuoco, con l'anello sempre in vista.
+class VistaCenterOnFocus extends StatelessWidget {
+  const VistaCenterOnFocus({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onFocusChange: (has) {
+      if (!has) return;
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0.5,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : VistaMotion.rowScroll,
+        curve: VistaMotion.enter,
+      );
+    },
+    child: child,
+  );
 }

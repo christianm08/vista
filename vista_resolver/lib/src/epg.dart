@@ -223,38 +223,56 @@ class EpgGuide {
 
   final List<EpgData> sources;
   final _indexes = <Map<String, List<String>>>[];
-  final _cache = <String, List<EpgProgramme>>{};
+  final _cache = <String, (String, List<EpgProgramme>)>{};
 
   bool get isEmpty => sources.every((s) => s.programmes.isEmpty);
 
   /// Programmi di un canale: prima per `tvg-id` esatto, poi per `tvg-id`
   /// semplificato, infine per nome. Fra più candidati vince la prima guida
   /// che ha programmi in onda o futuri rispetto a [now].
-  List<EpgProgramme> forChannel(Channel c, {DateTime? now}) {
-    final t = now ?? DateTime.now();
-    return _cache.putIfAbsent(c.key, () => _lookup(c, t));
-  }
+  /// Il canale scelto dall'utente ([Channel.epgId]) vince su tutto.
+  List<EpgProgramme> forChannel(Channel c, {DateTime? now}) =>
+      _match(c, now).$2;
 
-  List<EpgProgramme> _lookup(Channel c, DateTime now) {
-    final keys = [
-      if (c.tvgId.isNotEmpty) '#${c.tvgId.toLowerCase()}',
-      if (c.tvgId.isNotEmpty) epgIdKey(c.tvgId),
-      epgNameKey(c.key),
-      if (c.renamed) epgNameKey(c.name),
-    ];
-    List<EpgProgramme>? stale;
+  /// Id XMLTV abbinato al canale; vuoto se la guida non lo ha.
+  String matchedId(Channel c, {DateTime? now}) => _match(c, now).$1;
+
+  (String, List<EpgProgramme>) _match(Channel c, DateTime? now) =>
+      _cache.putIfAbsent(
+        '${c.key}#${c.epgId}',
+        () => _lookup(c, now ?? DateTime.now()),
+      );
+
+  (String, List<EpgProgramme>) _lookup(Channel c, DateTime now) {
+    final keys = c.epgId.isNotEmpty
+        ? ['#${c.epgId.toLowerCase()}']
+        : [
+            if (c.tvgId.isNotEmpty) '#${c.tvgId.toLowerCase()}',
+            if (c.tvgId.isNotEmpty) epgIdKey(c.tvgId),
+            epgNameKey(c.key),
+            if (c.renamed) epgNameKey(c.name),
+          ];
+    (String, List<EpgProgramme>)? stale;
     for (var i = 0; i < sources.length; i++) {
       for (final k in keys) {
         for (final id in _indexes[i][k] ?? const <String>[]) {
           final list = sources[i].programmes[id];
           if (list == null || list.isEmpty) continue;
-          if (list.last.stop.isAfter(now)) return list;
-          stale ??= list;
+          if (list.last.stop.isAfter(now)) return (id, list);
+          stale ??= (id, list);
         }
       }
     }
-    return stale ?? const [];
+    return stale ?? ('', const []);
   }
+
+  /// Canali di tutte le guide (id → primo nome), per la scelta manuale.
+  Map<String, String> get channels => {
+        for (final s in sources)
+          for (final MapEntry(:key, :value) in s.programmes.entries)
+            if (value.isNotEmpty)
+              key: (s.names[key] ?? const []).firstOrNull ?? key,
+      };
 
   /// Programma in onda e i successivi (al massimo [count] in tutto).
   List<EpgProgramme> upcoming(Channel c, {DateTime? now, int count = 3}) {

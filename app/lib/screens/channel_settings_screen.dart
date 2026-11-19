@@ -12,6 +12,7 @@ import '../widgets/channel_tile.dart';
 import '../widgets/focus_card.dart';
 import '../widgets/list_titles.dart';
 import '../widgets/tv_text_field.dart';
+import '../widgets/vista_focus.dart';
 
 /// Canali della fonte corrente, letti da [SourceStore.library] così le
 /// schermate restano aggiornate dopo ogni modifica.
@@ -74,6 +75,9 @@ class ChannelSettingsScreen extends StatefulWidget {
   State<ChannelSettingsScreen> createState() => _ChannelSettingsScreenState();
 }
 
+/// Spazio attorno agli elenchi: l'anello del fuoco sta fuori dalla voce.
+const _ring = VistaFocus.ringGap + VistaFocus.ringWidth;
+
 class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
   /// Nomi delle categorie come si leggono (vedi [groupLabels]).
   var _names = <String, String>{};
@@ -82,6 +86,12 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
   String _category = _allChannels;
   bool _selecting = false;
   final _selected = <String>{};
+
+  /// "Seleziona" e "Seleziona tutti": quando la barra cambia, il fuoco del
+  /// telecomando passa dall'uno all'altro invece di perdersi. Due nodi
+  /// distinti, così il pulsante nuovo riceve il fuoco e mostra l'anello.
+  final _selectFocus = FocusNode();
+  final _selectAllFocus = FocusNode();
   bool _busy = false;
 
   SourceStore get _store => widget.store;
@@ -96,6 +106,8 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
   void dispose() {
     _search.dispose();
     _channelScroll.dispose();
+    _selectFocus.dispose();
+    _selectAllFocus.dispose();
     super.dispose();
   }
 
@@ -236,15 +248,32 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
     if (!_selected.remove(c.key)) _selected.add(c.key);
   });
 
-  void _startSelecting([Channel? c]) => setState(() {
-    _selecting = true;
-    if (c != null) _selected.add(c.key);
-  });
+  void _startSelecting([Channel? c]) {
+    if (_selectFocus.hasFocus) _focusLater(_selectAllFocus);
+    setState(() {
+      _selecting = true;
+      if (c != null) _selected.add(c.key);
+    });
+  }
 
-  void _stopSelecting() => setState(() {
-    _selecting = false;
-    _selected.clear();
-  });
+  void _stopSelecting() {
+    // Dalla barra (Annulla, un'azione) si torna su "Seleziona".
+    if (FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<_ChannelRow>() ==
+        null) {
+      _focusLater(_selectFocus);
+    }
+    setState(() {
+      _selecting = false;
+      _selected.clear();
+    });
+  }
+
+  /// Il pulsante a fuoco sparisce: il fuoco va a [node] nella nuova barra.
+  void _focusLater(FocusNode node) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) node.requestFocus();
+      });
 
   Future<void> _setHidden(Iterable<String> keys, bool hide) async {
     final list = keys.toList();
@@ -293,117 +322,124 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
         if (!didPop) _stopSelecting();
       },
       child: Scaffold(
-        body: SafeArea(
-          child: ValueListenableBuilder(
-            valueListenable: _store.library,
-            builder: (context, _, _) {
-              final all = _channelsOf(_store);
-              final groups = _groups(all);
-              _names = groupLabels([for (final (g, _) in groups) g]);
-              final hiddenCount = all.where((c) => c.hidden).length;
-              // La categoria scelta può sparire (lista aggiornata, nessun
-              // canale più nascosto): si torna a "Tutti".
-              if (_category != _allChannels &&
-                  !(_category == _hiddenChannels && hiddenCount > 0) &&
-                  !groups.any((g) => g.$1 == _category)) {
-                _category = _allChannels;
-              }
-              final inCategory = _inCategory(all);
-              final q = _search.text.trim();
-              final shown = [
-                for (final c in inCategory)
-                  if (_matches(c, q)) c,
-              ];
-              final categories = [
-                (_allChannels, all.length),
-                if (hiddenCount > 0) (_hiddenChannels, hiddenCount),
-                ...groups,
-              ];
-              final edited =
-                  _store.prefs.overrides.length + _store.prefs.merges.length;
-              final header = _title(
-                context,
-                'Canali',
-                '${all.length} canali in ${groups.length} categorie'
-                    '${hiddenCount > 0 ? ' · $hiddenCount nascosti' : ''}'
-                    '${edited > 0 ? ' · $edited modifiche' : ''}.',
-              );
-              final search = TvTextField(
-                controller: _search,
-                hint: 'Cerca un canale',
-                prefixIcon: const Icon(Icons.search_rounded),
-              );
-              final channels = _channelPane(inCategory, shown, [
-                for (final (g, _) in groups) g,
-              ]);
-              final pad = _pagePadding(context).copyWith(bottom: 16);
-              if (!wide) {
+        // Il fuoco non fa scorrere da solo: gli elenchi centrano la voce.
+        body: FocusTraversalGroup(
+          policy: VistaTraversalPolicy(),
+          child: SafeArea(
+            child: ValueListenableBuilder(
+              valueListenable: _store.library,
+              builder: (context, _, _) {
+                final all = _channelsOf(_store);
+                final groups = _groups(all);
+                _names = groupLabels([for (final (g, _) in groups) g]);
+                final hiddenCount = all.where((c) => c.hidden).length;
+                // La categoria scelta può sparire (lista aggiornata, nessun
+                // canale più nascosto): si torna a "Tutti".
+                if (_category != _allChannels &&
+                    !(_category == _hiddenChannels && hiddenCount > 0) &&
+                    !groups.any((g) => g.$1 == _category)) {
+                  _category = _allChannels;
+                }
+                final inCategory = _inCategory(all);
+                final q = _search.text.trim();
+                final shown = [
+                  for (final c in inCategory)
+                    if (_matches(c, q)) c,
+                ];
+                final categories = [
+                  (_allChannels, all.length),
+                  if (hiddenCount > 0) (_hiddenChannels, hiddenCount),
+                  ...groups,
+                ];
+                final edited =
+                    _store.prefs.overrides.length + _store.prefs.merges.length;
+                final header = _title(
+                  context,
+                  'Canali',
+                  '${all.length} canali in ${groups.length} categorie'
+                      '${hiddenCount > 0 ? ' · $hiddenCount nascosti' : ''}'
+                      '${edited > 0 ? ' · $edited modifiche' : ''}.',
+                );
+                final search = TvTextField(
+                  controller: _search,
+                  hint: 'Cerca un canale',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                );
+                final channels = _channelPane(inCategory, shown, [
+                  for (final (g, _) in groups) g,
+                ]);
+                final pad = _pagePadding(context).copyWith(bottom: 16);
+                if (!wide) {
+                  return Padding(
+                    padding: pad,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        header,
+                        const SizedBox(height: 14),
+                        search,
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 44 + 2 * _ring,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.all(_ring),
+                            itemCount: categories.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 8),
+                            itemBuilder: (_, i) =>
+                                _categoryChip(categories[i], compact: true),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(child: channels),
+                      ],
+                    ),
+                  );
+                }
                 return Padding(
                   padding: pad,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       header,
-                      const SizedBox(height: 14),
-                      search,
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 44,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: categories.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 8),
-                          itemBuilder: (_, i) =>
-                              _categoryChip(categories[i], compact: true),
+                      const SizedBox(height: 18),
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: 300,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  search,
+                                  const SizedBox(height: 12),
+                                  Expanded(
+                                    child: ListView.separated(
+                                      padding: const EdgeInsets.all(_ring),
+                                      itemCount: categories.length,
+                                      separatorBuilder: (_, _) =>
+                                          const SizedBox(height: 6),
+                                      itemBuilder: (_, i) => _categoryChip(
+                                        categories[i],
+                                        autofocus: i == 0,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            Expanded(child: channels),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Expanded(child: channels),
                     ],
                   ),
                 );
-              }
-              return Padding(
-                padding: pad,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    header,
-                    const SizedBox(height: 18),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(
-                            width: 300,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                search,
-                                const SizedBox(height: 12),
-                                Expanded(
-                                  child: ListView.separated(
-                                    itemCount: categories.length,
-                                    separatorBuilder: (_, _) =>
-                                        const SizedBox(height: 6),
-                                    itemBuilder: (_, i) => _categoryChip(
-                                      categories[i],
-                                      autofocus: i == 0,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 24),
-                          Expanded(child: channels),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+              },
+            ),
           ),
         ),
       ),
@@ -418,44 +454,49 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
     final (id, count) = category;
     final t = Theme.of(context).textTheme;
     final selected = id == _category;
-    return FocusCard(
-      autofocus: autofocus,
-      selected: selected,
-      radius: compact ? 999 : 12,
-      focusScale: compact ? 1.04 : 1.02,
-      outline: !compact || selected,
-      fill: compact ? VistaColors.surface : VistaColors.transparent,
-      padding: EdgeInsets.symmetric(horizontal: 14, vertical: compact ? 8 : 11),
-      onTap: () => _pickCategory(id),
-      child: Row(
-        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-        children: [
-          if (id == _hiddenChannels ||
-              _store.prefs.hiddenGroups.contains(id)) ...[
-            Icon(
-              Icons.visibility_off_outlined,
-              size: 18,
-              color: selected ? VistaColors.onAccent : null,
-            ),
-            const SizedBox(width: 8),
-          ],
-          if (compact)
-            Text(
-              _label(id),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            )
-          else
-            Expanded(
-              child: Text(
-                _label(id),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+    return VistaCenterOnFocus(
+      child: FocusCard(
+        autofocus: autofocus,
+        selected: selected,
+        radius: compact ? VistaRadius.full : VistaRadius.card,
+        focusScale: 1.0,
+        outline: !compact || selected,
+        fill: compact ? VistaColors.surface : VistaColors.transparent,
+        padding: EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: compact ? 8 : 11,
+        ),
+        onTap: () => _pickCategory(id),
+        child: Row(
+          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+          children: [
+            if (id == _hiddenChannels ||
+                _store.prefs.hiddenGroups.contains(id)) ...[
+              Icon(
+                Icons.visibility_off_outlined,
+                size: 18,
+                color: selected ? VistaColors.onAccent : null,
               ),
-            ),
-          const SizedBox(width: 10),
-          Opacity(opacity: 0.65, child: Text('$count', style: t.labelMedium)),
-        ],
+              const SizedBox(width: 8),
+            ],
+            if (compact)
+              Text(
+                _label(id),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              )
+            else
+              Expanded(
+                child: Text(
+                  _label(id),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            const SizedBox(width: 10),
+            Opacity(opacity: 0.65, child: Text('$count', style: t.labelMedium)),
+          ],
+        ),
       ),
     );
   }
@@ -500,7 +541,13 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                       : '${_selected.length} selezionati'),
             style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
+          if (Device.isTv)
+            Text(
+              'Menu: vai alle azioni',
+              style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
+            ),
           OutlinedButton.icon(
+            focusNode: _selectAllFocus,
             onPressed: shown.isEmpty
                 ? null
                 : () => setState(() {
@@ -515,35 +562,39 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
             ),
             label: Text(allSelected ? 'Deseleziona tutti' : 'Seleziona tutti'),
           ),
-          FilledButton.icon(
-            onPressed: !_busy && canHide
-                ? () => _setHidden(
-                    selectedChannels.where((c) => !c.hidden).map((c) => c.key),
-                    true,
-                  )
-                : null,
-            icon: const Icon(Icons.visibility_off_outlined),
-            label: const Text('Nascondi'),
-          ),
-          OutlinedButton.icon(
-            onPressed: !_busy && canShow
-                ? () => _setHidden(
-                    selectedChannels
-                        .where((c) => c.hidden && !c.groupHidden)
-                        .map((c) => c.key),
-                    false,
-                  )
-                : null,
-            icon: const Icon(Icons.visibility_outlined),
-            label: const Text('Mostra'),
-          ),
-          OutlinedButton.icon(
-            onPressed: !_busy && _selected.isNotEmpty
-                ? () => _moveSelected(groupOrder)
-                : null,
-            icon: const Icon(Icons.drive_file_move_outline),
-            label: const Text('Sposta in…'),
-          ),
+          // Solo le azioni che fanno qualcosa sui canali scelti.
+          if (canHide)
+            FilledButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () => _setHidden(
+                      selectedChannels
+                          .where((c) => !c.hidden)
+                          .map((c) => c.key),
+                      true,
+                    ),
+              icon: const Icon(Icons.visibility_off_outlined),
+              label: const Text('Nascondi'),
+            ),
+          if (canShow)
+            OutlinedButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () => _setHidden(
+                      selectedChannels
+                          .where((c) => c.hidden && !c.groupHidden)
+                          .map((c) => c.key),
+                      false,
+                    ),
+              icon: const Icon(Icons.visibility_outlined),
+              label: const Text('Mostra'),
+            ),
+          if (_selected.isNotEmpty)
+            OutlinedButton.icon(
+              onPressed: _busy ? null : () => _moveSelected(groupOrder),
+              icon: const Icon(Icons.drive_file_move_outline),
+              label: const Text('Sposta in…'),
+            ),
           TextButton(onPressed: _stopSelecting, child: const Text('Annulla')),
         ],
       );
@@ -567,6 +618,8 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                       ? '1 canale'
                       : '${inCategory.length} canali',
                   if (groupHidden) 'categoria nascosta',
+                  if (Device.isTv && inCategory.isNotEmpty)
+                    "Menu su un canale: scegline più d'uno",
                   if (hiddenHere > 0 && _category != _hiddenChannels)
                     '$hiddenHere nascosti',
                 ].join(' · '),
@@ -575,11 +628,13 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
             ],
           ),
           const SizedBox(width: 6),
-          OutlinedButton.icon(
-            onPressed: inCategory.isEmpty ? null : () => _startSelecting(),
-            icon: const Icon(Icons.checklist_rounded),
-            label: const Text('Seleziona'),
-          ),
+          if (inCategory.isNotEmpty)
+            OutlinedButton.icon(
+              focusNode: _selectFocus,
+              onPressed: () => _startSelecting(),
+              icon: const Icon(Icons.checklist_rounded),
+              label: const Text('Seleziona'),
+            ),
           if (realGroup)
             OutlinedButton.icon(
               onPressed: _busy
@@ -666,6 +721,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                 )
               : ListView.separated(
                   controller: _channelScroll,
+                  padding: const EdgeInsets.all(_ring),
                   itemCount: shown.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (_, i) {
@@ -675,8 +731,11 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                       mergedCount: _store.prefs.mergedInto(c.key).length,
                       checked: _selecting ? _selected.contains(c.key) : null,
                       onTap: () => _selecting ? _toggle(c) : _openChannel(c),
-                      onLongPress: () =>
-                          _selecting ? _toggle(c) : _startSelecting(c),
+                      // Menu: entra nella selezione; già dentro, porta
+                      // alle azioni senza risalire tutto l'elenco.
+                      onLongPress: () => _selecting
+                          ? _selectAllFocus.requestFocus()
+                          : _startSelecting(c),
                     );
                   },
                 ),
@@ -716,89 +775,95 @@ class _ChannelRow extends StatelessWidget {
         mergedCount == 1 ? '1 canale unito' : '$mergedCount canali uniti',
       cleanGroupName(c.group),
     ];
-    return FocusCard(
-      autofocus: autofocus,
-      radius: VistaRadius.card,
-      focusScale: 1.02,
-      fill: checked == true ? VistaColors.surfaceSelected : VistaColors.surface,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Row(
-        children: [
-          if (checked != null) ...[
-            Icon(
-              checked!
-                  ? Icons.check_box_rounded
-                  : Icons.check_box_outline_blank_rounded,
-              color: checked! ? VistaColors.accent : VistaColors.textSecondary,
-            ),
-            const SizedBox(width: 12),
-          ],
-          SizedBox(
-            width: 40,
-            child: Text(
-              '${c.number}',
-              style: t.labelLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: c.renumbered
+    return VistaCenterOnFocus(
+      child: FocusCard(
+        autofocus: autofocus,
+        radius: VistaRadius.card,
+        focusScale: 1.0,
+        fill: checked == true
+            ? VistaColors.surfaceSelected
+            : VistaColors.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Row(
+          children: [
+            if (checked != null) ...[
+              Icon(
+                checked!
+                    ? Icons.check_box_rounded
+                    : Icons.check_box_outline_blank_rounded,
+                color: checked!
                     ? VistaColors.accent
                     : VistaColors.textSecondary,
               ),
-            ),
-          ),
-          Opacity(
-            opacity: c.hidden ? 0.45 : 1,
-            child: ChannelLogo(channel: c, size: 48),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  c.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: c.hidden ? VistaColors.textSecondary : null,
-                  ),
+              const SizedBox(width: 12),
+            ],
+            SizedBox(
+              width: 40,
+              child: Text(
+                '${c.number}',
+                style: t.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: c.renumbered
+                      ? VistaColors.accent
+                      : VistaColors.textSecondary,
                 ),
-                Text(
-                  notes.join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.bodySmall?.copyWith(
-                    color: VistaColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (AppScope.of(context).parental.isLocked(c))
-            const Padding(
-              padding: EdgeInsets.only(left: 8),
-              child: Icon(
-                Icons.lock_outline_rounded,
-                size: 18,
-                color: VistaColors.accent,
               ),
             ),
-          if (c.customLogo.isNotEmpty)
-            const Padding(
-              padding: EdgeInsets.only(left: 8),
-              child: Pill('icona'),
+            Opacity(
+              opacity: c.hidden ? 0.45 : 1,
+              child: ChannelLogo(channel: c, size: 48),
             ),
-          if (c.hidden)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Pill(
-                c.groupHidden ? 'categoria nascosta' : 'nascosto',
-                filled: true,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    c.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: c.hidden ? VistaColors.textSecondary : null,
+                    ),
+                  ),
+                  Text(
+                    notes.join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodySmall?.copyWith(
+                      color: VistaColors.textSecondary,
+                    ),
+                  ),
+                ],
               ),
             ),
-        ],
+            if (AppScope.of(context).parental.isLocked(c))
+              const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: Icon(
+                  Icons.lock_outline_rounded,
+                  size: 18,
+                  color: VistaColors.accent,
+                ),
+              ),
+            if (c.customLogo.isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: Pill('icona'),
+              ),
+            if (c.hidden)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Pill(
+                  c.groupHidden ? 'categoria nascosta' : 'nascosto',
+                  filled: true,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -904,6 +969,20 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
     _setLogo(uri.toString());
   }
 
+  void _setEpg(String id) => _save(
+    (p) => p.setEpg(widget.channelKey, id),
+    id.isEmpty ? "Torna l'abbinamento automatico." : 'Guida aggiornata.',
+  );
+
+  Future<void> _pickEpg(EpgGuide guide, String current) async {
+    final picked = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => _EpgPickerScreen(guide: guide, current: current),
+      ),
+    );
+    if (picked != null) _setEpg(picked);
+  }
+
   Future<void> _addChannel() async {
     final picked = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -956,6 +1035,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
                     _section('Numero e categoria', _placeSection(c)),
                     _section('Nome', _nameSection(c)),
                     _section('Icona', _logoSection(c)),
+                    _section('Guida TV', _epgSection(c)),
                     _section('Raggruppa', _mergeSection(c)),
                   ],
                 ),
@@ -1289,6 +1369,45 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
     ];
   }
 
+  List<Widget> _epgSection(Channel c) {
+    final t = Theme.of(context).textTheme;
+    final guide = AppScope.of(context).epg.guide.value;
+    final id = guide.matchedId(c);
+    final on = guide.nowOn(c);
+    final how = c.epgId.isEmpty ? 'automatico' : 'scelto da te';
+    return [
+      Text(
+        guide.isEmpty
+            ? 'Nessuna guida caricata.'
+            : id.isEmpty
+            ? 'Nessun canale della guida abbinato ($how).'
+            : metaLine([
+                'Abbinato a ${guide.channels[id] ?? id} ($how)',
+                if (on != null) 'ora: ${on.title}',
+              ]),
+        style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
+      ),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          OutlinedButton(
+            onPressed: _busy || guide.isEmpty
+                ? null
+                : () => _pickEpg(guide, id),
+            child: const Text('Scegli il canale della guida'),
+          ),
+          if (c.epgId.isNotEmpty)
+            OutlinedButton(
+              onPressed: _busy ? null : () => _setEpg(''),
+              child: const Text('Abbinamento automatico'),
+            ),
+        ],
+      ),
+    ];
+  }
+
   List<Widget> _mergeSection(Channel c) {
     final t = Theme.of(context).textTheme;
     final merged = _store.prefs.mergedInto(c.key);
@@ -1404,6 +1523,141 @@ class _ChannelPickerScreenState extends State<_ChannelPickerScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sceglie un canale fra quelli delle guide caricate; restituisce l'id XMLTV.
+class _EpgPickerScreen extends StatefulWidget {
+  const _EpgPickerScreen({required this.guide, required this.current});
+  final EpgGuide guide;
+  final String current;
+
+  @override
+  State<_EpgPickerScreen> createState() => _EpgPickerScreenState();
+}
+
+class _EpgPickerScreenState extends State<_EpgPickerScreen> {
+  final _search = TextEditingController();
+  // L'abbinamento attuale in cima, poi tutti per nome.
+  late final _all = widget.guide.channels.entries.toList()
+    ..sort((a, b) {
+      final current =
+          (b.key == widget.current ? 1 : 0) - (a.key == widget.current ? 1 : 0);
+      if (current != 0) return current;
+      return a.value.toLowerCase().compareTo(b.value.toLowerCase());
+    });
+
+  @override
+  void initState() {
+    super.initState();
+    _search.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Titolo in onda su un canale della guida, per riconoscerlo.
+  String _onAir(String id, DateTime now) {
+    for (final s in widget.guide.sources) {
+      for (final p in s.programmes[id] ?? const <EpgProgramme>[]) {
+        if (p.isOnAt(now)) return p.title;
+      }
+    }
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final q = _search.text.trim().toLowerCase();
+    final shown = [
+      for (final e in _all)
+        if (q.isEmpty ||
+            e.value.toLowerCase().contains(q) ||
+            e.key.toLowerCase().contains(q))
+          e,
+    ];
+    final now = DateTime.now();
+    return Scaffold(
+      body: SafeArea(
+        child: FocusTraversalGroup(
+          policy: VistaTraversalPolicy(),
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: _pagePadding(context).copyWith(bottom: 12),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _title(
+                        context,
+                        'Quale canale della guida?',
+                        '${_all.length} canali nelle guide caricate.',
+                      ),
+                      const SizedBox(height: 16),
+                      TvTextField(
+                        controller: _search,
+                        hint: 'Cerca per nome o id',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: _pagePadding(context).copyWith(top: 0),
+                sliver: SliverList.separated(
+                  itemCount: shown.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: VistaSpace.s8),
+                  itemBuilder: (_, i) {
+                    final MapEntry(key: id, value: name) = shown[i];
+                    return VistaCenterOnFocus(
+                      child: FocusCard(
+                        autofocus: i == 0,
+                        radius: VistaRadius.card,
+                        focusScale: 1.0,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: VistaSpace.s16,
+                          vertical: VistaSpace.s12,
+                        ),
+                        onTap: () => Navigator.of(context).pop(id),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: t.titleSmall,
+                            ),
+                            Text(
+                              metaLine([
+                                if (id == widget.current) 'attuale',
+                                id,
+                                _onAir(id, now),
+                              ]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: t.bodySmall?.copyWith(
+                                color: VistaColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

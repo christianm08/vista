@@ -7,6 +7,7 @@ class ChannelOverride {
     this.logo = '',
     this.number,
     this.group = '',
+    this.epg = '',
   });
 
   factory ChannelOverride.fromJson(Map<String, dynamic> j) => ChannelOverride(
@@ -14,6 +15,7 @@ class ChannelOverride {
         logo: j['logo'] as String? ?? '',
         number: j['number'] as int?,
         group: j['group'] as String? ?? '',
+        epg: j['epg'] as String? ?? '',
       );
 
   final String name;
@@ -26,8 +28,15 @@ class ChannelOverride {
   /// lista. Una categoria nuova nasce spostandoci un canale.
   final String group;
 
+  /// Canale della guida scelto dall'utente (id XMLTV); vuoto = automatico.
+  final String epg;
+
   bool get isEmpty =>
-      name.isEmpty && logo.isEmpty && number == null && group.isEmpty;
+      name.isEmpty &&
+      logo.isEmpty &&
+      number == null &&
+      group.isEmpty &&
+      epg.isEmpty;
 
   ChannelOverride copyWith({
     String? name,
@@ -35,12 +44,14 @@ class ChannelOverride {
     int? number,
     bool clearNumber = false,
     String? group,
+    String? epg,
   }) =>
       ChannelOverride(
         name: name ?? this.name,
         logo: logo ?? this.logo,
         number: clearNumber ? null : (number ?? this.number),
         group: group ?? this.group,
+        epg: epg ?? this.epg,
       );
 
   Map<String, Object> toJson() => {
@@ -48,6 +59,7 @@ class ChannelOverride {
         if (logo.isNotEmpty) 'logo': logo,
         if (number != null) 'number': number!,
         if (group.isNotEmpty) 'group': group,
+        if (epg.isNotEmpty) 'epg': epg,
       };
 }
 
@@ -142,6 +154,10 @@ class ChannelPrefs {
 
   ChannelPrefs setLogo(String key, String logo) =>
       _override(key, (o) => o.copyWith(logo: logo.trim()));
+
+  /// Canale della guida (id XMLTV); vuoto torna all'abbinamento automatico.
+  ChannelPrefs setEpg(String key, String epgId) =>
+      _override(key, (o) => o.copyWith(epg: epgId.trim()));
 
   /// Numero del canale; `null` torna a quello della lista. I canali si
   /// ordinano per numero.
@@ -280,6 +296,7 @@ class ChannelPrefs {
         name: (o == null || o.name.isEmpty) ? null : o.name,
         renamed: o != null && o.name.isNotEmpty,
         customLogo: o?.logo ?? '',
+        epgId: o?.epg ?? '',
         number: o?.number,
         renumbered: o?.number != null,
         group: group,
