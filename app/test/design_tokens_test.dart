@@ -43,7 +43,7 @@ const _migrated = [
 /// Valori scritti a mano che devono stare solo in lib/tokens.dart.
 final _rules = <String, RegExp>{
   'colore': RegExp(r'Color\(0x|\bColors\.'),
-  'raggio': RegExp(r'circular\([1-9]'),
+  'raggio': RegExp(r'circular\([1-9]|radius: [1-9]'),
   'durata': RegExp(r'Duration\((milliseconds|seconds|minutes):'),
   'spaziatura': RegExp(
     r'EdgeInsets\.[a-zA-Z]+\([^)]*\b[1-9]|SizedBox\((width|height): [1-9]|'

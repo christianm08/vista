@@ -5,10 +5,6 @@ import 'focus_card.dart';
 import 'list_titles.dart';
 import 'tv_text_field.dart';
 
-ShapeBorder get _shape => RoundedRectangleBorder(
-  borderRadius: BorderRadius.circular(VistaRadius.card),
-);
-
 /// Chiede un testo (nome di una categoria, numero…). `null` se annullato.
 Future<String?> askText(
   BuildContext context, {
@@ -25,7 +21,6 @@ Future<String?> askText(
     builder: (ctx) {
       void done() => Navigator.pop(ctx, ctl.text.trim());
       return AlertDialog(
-        shape: _shape,
         title: Text(title),
         content: SizedBox(
           width: 420,
@@ -104,7 +99,6 @@ Future<String?> pickGroup(
   final choice = await showDialog<String>(
     context: context,
     builder: (ctx) => SimpleDialog(
-      shape: _shape,
       title: Text(title),
       children: [
         SizedBox(
