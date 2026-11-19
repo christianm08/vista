@@ -60,18 +60,6 @@ abstract final class VistaColors {
 
   /// Fondo del video (bande sopra e sotto): nero vero, non il fondo.
   static const video = Color(0xFF000000);
-
-  // --- Nomi dello stile "Vetro", tenuti finché le schermate non sono migrate
-  // (fasi 3–6) e rimossi nella fase 7. Puntano ai nuovi token.
-  static const teal = accent;
-  static const peach = accent;
-  static const violet = accent;
-  static const onPrimary = onAccent;
-  static const glass = surface;
-  static const glassHigh = surfaceHigh;
-  static const glassActive = surfaceSelected;
-  static const glassBorder = outline;
-  static const textTertiary = textSecondary;
 }
 
 /// Veli del backdrop: sfumano l'artwork nel fondo. Il testo sta solo dove il
@@ -129,6 +117,10 @@ abstract final class VistaScrims {
   /// Dietro le finestre di dialogo: la pagina resta appena leggibile e la
   /// finestra, su superficie alta, si stacca (funzionale, non decorativo).
   static const dialogBarrier = Color(0xD90C0D0C);
+
+  /// Pannelli e pulsanti sopra il video (player dei film): il video resta
+  /// intuibile sotto, il testo leggibile.
+  static const onVideo = Color(0xB30C0D0C);
 }
 
 /// Spaziature. Nessun altro valore.
@@ -156,10 +148,6 @@ abstract final class VistaRadius {
 
   /// Pulsanti, indicatori, barre: forma a pillola.
   static const full = 999.0;
-
-  // Nomi dello stile "Vetro" (fase 7: da rimuovere).
-  static const hero = panel;
-  static const poster = card;
 }
 
 /// Misure dei componenti (dimensioni, non spaziature).

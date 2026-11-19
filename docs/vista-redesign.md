@@ -26,13 +26,14 @@ seria** (TiviMate) e **un catalogo dei servizi legali** (JustWatch). È lo spazi
      tela larga 1280 punti, come una finestra del PC, e si scala sullo schermo: TV e
      Windows hanno la stessa impaginazione (aggiornato il 12/11/2026).
 2. **I contenuti al centro.** Locandine e sfondi grandi, l'interfaccia passa in secondo
-   piano: niente cornici superflue e un solo accento (pesca) per avanzamento e focus.
+   piano: superfici piene e scure, niente cornici superflue, un solo accento (lime) per
+   avanzamento e "in onda". Il fuoco è un anello bianco (aggiornato il 19/11/2026: i
+   valori sono in `app/lib/tokens.dart`, il riassunto in `vista-contesto.md`, sezione Design).
 3. **Gerarchia chiara.** Titoli di riga piccoli in maiuscoletto, titoli dei contenuti in
    grassetto, metadati su una riga separati da "·".
 4. **Il telecomando prima di tutto.** Focus sempre visibile, Indietro prevedibile (torna
    alla barra, poi alla Home, poi esce), nessun vicolo cieco.
-5. **Veloce.** Nessun blur (né sullo sfondo né sulle superfici: gli aloni sono
-   gradienti), immagini ridimensionate in decodifica e tenute anche su disco, liste
+5. **Veloce.** Nessun blur e nessun alone: superfici piene, immagini ridimensionate in decodifica e tenute anche su disco, liste
    virtualizzate, calcoli sulle liste grandi fatti una volta per catalogo.
 
 ## Sezioni

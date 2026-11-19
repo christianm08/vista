@@ -50,10 +50,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   ]) => showDialog<T>(
     context: context,
     builder: (ctx) => SimpleDialog(
-      backgroundColor: const Color(0xF0121720),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(VistaRadius.card),
-      ),
       title: Text(title),
       children: [
         for (final v in values)
@@ -62,7 +58,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             child: FocusCard(
               autofocus: v == current,
               selected: v == current,
-              radius: 12,
+              radius: VistaRadius.card,
               focusScale: 1.0,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               onTap: () => Navigator.pop(ctx, v),
@@ -142,10 +138,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
         title: const Text('Cancellare la registrazione?'),
         content: Text(
           '${RecordingService.label(f)}\nIl file verrà eliminato e non si potrà recuperare.',
@@ -264,7 +256,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     Text(
                       'Cartella: $folder',
                       style: t.bodySmall?.copyWith(
-                        color: VistaColors.textTertiary,
+                        color: VistaColors.textSecondary,
                       ),
                     ),
                   ],
@@ -273,7 +265,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     Text(
                       'PROGRAMMATE',
                       style: t.labelMedium?.copyWith(
-                        color: VistaColors.textTertiary,
+                        color: VistaColors.textSecondary,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1.2,
                       ),
@@ -285,7 +277,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                             ? Icons.fiber_manual_record_rounded
                             : Icons.schedule_rounded,
                         iconColor: _service.running.contains(s)
-                            ? const Color(0xFFFF5A5F)
+                            ? VistaColors.error
                             : null,
                         title: s.title.isEmpty ? s.channelName : s.title,
                         subtitle:
@@ -302,7 +294,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   Text(
                     'SALVATE',
                     style: t.labelMedium?.copyWith(
-                      color: VistaColors.textTertiary,
+                      color: VistaColors.textSecondary,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
                     ),
@@ -392,7 +384,7 @@ class _Row extends StatelessWidget {
                         Text(
                           subtitle,
                           style: t.bodySmall?.copyWith(
-                            color: VistaColors.textTertiary,
+                            color: VistaColors.textSecondary,
                           ),
                         ),
                       ],

@@ -58,7 +58,7 @@ class VodPlayerScreen extends StatefulWidget {
 }
 
 class _VodPlayerScreenState extends State<VodPlayerScreen> {
-  static const _overlayTimeout = Duration(seconds: 4);
+  static const _overlayTimeout = VistaMotion.overlayAutoHide;
 
   final _player = Player();
   late final _video = vistaVideoController(_player);
@@ -355,7 +355,7 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
         if (!didPop && _options) _closeOptions();
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: VistaColors.video,
         body: Focus(
           focusNode: _focus,
           autofocus: true,
@@ -398,7 +398,7 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
                     if (_error != null) _message(_error!),
                     AnimatedOpacity(
                       opacity: _overlay ? 1 : 0,
-                      duration: const Duration(milliseconds: 200),
+                      duration: VistaMotion.overlayFade,
                       child: IgnorePointer(
                         ignoring: !_overlay,
                         child: Stack(
@@ -466,9 +466,9 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
   }
 
   Widget _message(String text) => Center(
-    child: Glass(
+    child: VistaPanel(
       padding: const EdgeInsets.all(24),
-      fill: const Color(0x6B10161C),
+      fill: VistaScrims.onVideo,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
         child: Text(text, textAlign: TextAlign.center),
@@ -486,9 +486,9 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
         padding: EdgeInsets.all(wide ? 40 : 16),
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: Glass(
+          child: VistaPanel(
             radius: VistaRadius.card,
-            fill: const Color(0x6B10161C),
+            fill: VistaScrims.onVideo,
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -558,7 +558,7 @@ class _VodPlayerScreenState extends State<VodPlayerScreen> {
                       Text(
                         '◀ ▶ 10 s · OK pausa · ▼ audio e sottotitoli',
                         style: t.bodySmall?.copyWith(
-                          color: VistaColors.textTertiary,
+                          color: VistaColors.textSecondary,
                         ),
                       ),
                     const Spacer(),
@@ -604,13 +604,13 @@ class _SeekBar extends StatelessWidget {
             height: 20,
             child: Center(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(VistaRadius.full),
                 child: SizedBox(
                   height: 6,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      const ColoredBox(color: VistaColors.glassActive),
+                      const ColoredBox(color: VistaColors.surfaceSelected),
                       FractionallySizedBox(
                         alignment: Alignment.centerLeft,
                         widthFactor: progress.clamp(0.0, 1.0),
@@ -638,7 +638,7 @@ class PlayerBackButton extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       child: IconButton(
         tooltip: 'Indietro',
-        style: IconButton.styleFrom(backgroundColor: const Color(0x80000000)),
+        style: IconButton.styleFrom(backgroundColor: VistaScrims.onVideo),
         onPressed: () => Navigator.of(context).maybePop(),
         icon: const Icon(Icons.arrow_back_rounded),
       ),

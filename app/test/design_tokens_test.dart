@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// I file già migrati ai token. Cresce a ogni fase; nella fase 7 diventa
-/// tutta l'interfaccia (lib/ tranne tokens.dart, data/ e player/).
+/// I file migrati del tutto ai token (anche spaziature e testo). Le schermate
+/// non ancora ridisegnate passano solo il controllo su colori e raggi.
 const _migrated = [
   'lib/theme.dart',
   'lib/widgets/focus_card.dart',
@@ -77,6 +77,35 @@ void main() {
         if (_allowed.any(code.contains)) continue;
         for (final MapEntry(key: what, value: re) in _rules.entries) {
           if (re.hasMatch(code)) problems.add('$path:${i + 1} ($what): $line');
+        }
+      }
+    }
+    expect(problems, isEmpty, reason: problems.join('\n'));
+  });
+
+  test('in tutta l\'interfaccia colori e raggi vengono dai token', () {
+    // Fuori: i token, i dati, il player non visivo e i colori del logo.
+    const outside = [
+      'lib/tokens.dart',
+      'lib/data/',
+      'lib/player/platform_player.dart',
+      'lib/player/live_recording.dart',
+      'lib/widgets/vista_mark.dart',
+    ];
+    final problems = <String>[];
+    final files = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .map((f) => f.path.replaceAll('\\', '/'))
+        .where((p) => p.endsWith('.dart'))
+        .where((p) => !outside.any(p.startsWith));
+    for (final path in files) {
+      for (final (i, line) in File(path).readAsLinesSync().indexed) {
+        final code = line.split('//').first;
+        for (final what in ['colore', 'raggio']) {
+          if (_rules[what]!.hasMatch(code)) {
+            problems.add('$path:${i + 1} ($what): $line');
+          }
         }
       }
     }

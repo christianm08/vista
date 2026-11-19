@@ -9,8 +9,6 @@ ShapeBorder get _shape => RoundedRectangleBorder(
   borderRadius: BorderRadius.circular(VistaRadius.card),
 );
 
-const _dialogFill = Color(0xF0121720);
-
 /// Chiede un testo (nome di una categoria, numero…). `null` se annullato.
 Future<String?> askText(
   BuildContext context, {
@@ -27,7 +25,6 @@ Future<String?> askText(
     builder: (ctx) {
       void done() => Navigator.pop(ctx, ctl.text.trim());
       return AlertDialog(
-        backgroundColor: _dialogFill,
         shape: _shape,
         title: Text(title),
         content: SizedBox(
@@ -107,7 +104,6 @@ Future<String?> pickGroup(
   final choice = await showDialog<String>(
     context: context,
     builder: (ctx) => SimpleDialog(
-      backgroundColor: _dialogFill,
       shape: _shape,
       title: Text(title),
       children: [
@@ -164,7 +160,7 @@ Widget _option(
   child: FocusCard(
     autofocus: selected,
     selected: selected,
-    radius: 12,
+    radius: VistaRadius.card,
     focusScale: 1.0,
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
     onTap: () => Navigator.pop(ctx, value),

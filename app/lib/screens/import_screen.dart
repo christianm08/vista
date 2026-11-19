@@ -117,8 +117,8 @@ class _ImportScreenState extends State<ImportScreen> {
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
-              child: Glass(
-                radius: VistaRadius.hero,
+              child: VistaPanel(
+                radius: VistaRadius.panel,
                 padding: const EdgeInsets.all(28),
                 child: FocusTraversalGroup(
                   child: Column(
@@ -184,7 +184,7 @@ class _ImportScreenState extends State<ImportScreen> {
                             : 'Lascialo vuoto, a meno che il fornitore non ne '
                                   'chieda uno preciso.',
                         style: t.bodySmall?.copyWith(
-                          color: VistaColors.textTertiary,
+                          color: VistaColors.textSecondary,
                         ),
                       ),
                       if (busy) ...[
@@ -203,7 +203,7 @@ class _ImportScreenState extends State<ImportScreen> {
                         const SizedBox(height: 16),
                         Text(
                           _error!,
-                          style: const TextStyle(color: Color(0xFFFF9C8A)),
+                          style: const TextStyle(color: VistaColors.error),
                         ),
                       ],
                     ],
@@ -219,7 +219,7 @@ class _ImportScreenState extends State<ImportScreen> {
 
   Widget _modeChip(String label, _Mode mode, {bool autofocus = false}) {
     return FocusCard(
-      radius: 999,
+      radius: VistaRadius.full,
       autofocus: autofocus,
       selected: _mode == mode,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -282,7 +282,7 @@ class _ImportScreenState extends State<ImportScreen> {
     Text(
       'Le credenziali restano su questo dispositivo, nel portachiavi del sistema.',
       style: Theme.of(context).textTheme.bodySmall
-          ?.copyWith(color: VistaColors.textTertiary),
+          ?.copyWith(color: VistaColors.textSecondary),
     ),
     const SizedBox(height: 14),
     FilledButton(onPressed: busy ? null : _login, child: const Text('Accedi')),

@@ -674,10 +674,9 @@ class VistaThemeScope extends StatelessWidget {
   );
 }
 
-/// Superficie di un pannello (stile "Vetro" da rimuovere nella fase 7):
-/// ora è una superficie piena, senza bordo.
-class Glass extends StatelessWidget {
-  const Glass({
+/// Superficie piena di un pannello, senza bordo.
+class VistaPanel extends StatelessWidget {
+  const VistaPanel({
     super.key,
     required this.child,
     this.radius = VistaRadius.card,

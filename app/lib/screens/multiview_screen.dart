@@ -217,10 +217,6 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
     final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        backgroundColor: const Color(0xF0121720),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VistaRadius.card),
-        ),
         title: Row(
           children: [
             ChannelLogo(channel: t.channel, size: 34),
@@ -322,7 +318,7 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
       );
     }
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: VistaColors.video,
       body: CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.escape): () {
@@ -357,9 +353,9 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
       padding: const EdgeInsets.all(4),
       child: FocusCard(
         focusNode: t.focus,
-        radius: 10,
+        radius: VistaRadius.card,
         focusScale: 1.0,
-        fill: Colors.black,
+        fill: VistaColors.video,
         onTap: () {
           if (t.focus.hasFocus || Device.isTv) {
             _tileMenu(t);
@@ -370,14 +366,14 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
         },
         onLongPress: () => _tileMenu(t),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(VistaRadius.card),
           child: Stack(
             fit: StackFit.expand,
             children: [
               Video(controller: t.video, controls: NoVideoControls),
               if (!t.playing)
                 ColoredBox(
-                  color: const Color(0xFF0B0E13),
+                  color: VistaColors.surface,
                   child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -388,7 +384,7 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
                           Text(
                             'Non disponibile',
                             style: tx.bodySmall?.copyWith(
-                              color: VistaColors.textTertiary,
+                              color: VistaColors.textSecondary,
                             ),
                           )
                         else
@@ -408,9 +404,10 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
                 child: DecoratedBox(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0x00000000), Color(0xCC000000)],
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: VistaScrims.playerBottomColors,
+                      stops: VistaScrims.playerBottomStops,
                     ),
                   ),
                   child: Padding(
@@ -424,7 +421,7 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
                           size: 18,
                           color: i == _audio
                               ? VistaColors.accent
-                              : VistaColors.textTertiary,
+                              : VistaColors.textSecondary,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -455,9 +452,9 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
     padding: const EdgeInsets.all(4),
     child: FocusCard(
       focusNode: _addFocus,
-      radius: 10,
+      radius: VistaRadius.card,
       focusScale: 1.0,
-      fill: const Color(0xFF0B0E13),
+      fill: VistaColors.surface,
       onTap: _addNew,
       child: const Center(
         child: Column(
@@ -472,7 +469,7 @@ class _MultiviewScreenState extends State<MultiviewScreen> {
             SizedBox(height: 4),
             Text(
               'fino a 4 canali insieme',
-              style: TextStyle(color: VistaColors.textTertiary, fontSize: 12),
+              style: TextStyle(color: VistaColors.textSecondary, fontSize: 12),
             ),
           ],
         ),
@@ -585,10 +582,10 @@ class _ChannelPickerState extends State<_ChannelPicker> {
                         padding: const EdgeInsets.only(bottom: 4),
                         child: FocusCard(
                           autofocus: i == 0,
-                          radius: 12,
+                          radius: VistaRadius.card,
                           focusScale: 1.0,
                           outline: false,
-                          fill: Colors.transparent,
+                          fill: VistaColors.transparent,
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           onTap: () => Navigator.of(context).pop(c),
                           child: Row(
@@ -598,7 +595,7 @@ class _ChannelPickerState extends State<_ChannelPicker> {
                                 child: Text(
                                   '${c.number}',
                                   style: t.labelLarge?.copyWith(
-                                    color: VistaColors.textTertiary,
+                                    color: VistaColors.textSecondary,
                                   ),
                                 ),
                               ),
@@ -624,7 +621,7 @@ class _ChannelPickerState extends State<_ChannelPicker> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: t.bodySmall?.copyWith(
-                                        color: VistaColors.textTertiary,
+                                        color: VistaColors.textSecondary,
                                       ),
                                     ),
                                   ],

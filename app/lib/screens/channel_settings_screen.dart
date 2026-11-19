@@ -273,7 +273,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
+        SnackBar(content: Text(text), duration: VistaMotion.toast),
       );
   }
 
@@ -424,7 +424,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
       radius: compact ? 999 : 12,
       focusScale: compact ? 1.04 : 1.02,
       outline: !compact || selected,
-      fill: compact ? VistaColors.glass : Colors.transparent,
+      fill: compact ? VistaColors.surface : VistaColors.transparent,
       padding: EdgeInsets.symmetric(horizontal: 14, vertical: compact ? 8 : 11),
       onTap: () => _pickCategory(id),
       child: Row(
@@ -435,7 +435,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
             Icon(
               Icons.visibility_off_outlined,
               size: 18,
-              color: selected ? VistaColors.onPrimary : null,
+              color: selected ? VistaColors.onAccent : null,
             ),
             const SizedBox(width: 8),
           ],
@@ -570,7 +570,7 @@ class _ChannelSettingsScreenState extends State<ChannelSettingsScreen> {
                   if (hiddenHere > 0 && _category != _hiddenChannels)
                     '$hiddenHere nascosti',
                 ].join(' · '),
-                style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+                style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
               ),
             ],
           ),
@@ -718,9 +718,9 @@ class _ChannelRow extends StatelessWidget {
     ];
     return FocusCard(
       autofocus: autofocus,
-      radius: VistaRadius.poster,
+      radius: VistaRadius.card,
       focusScale: 1.02,
-      fill: checked == true ? VistaColors.glassActive : VistaColors.glass,
+      fill: checked == true ? VistaColors.surfaceSelected : VistaColors.surface,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       onTap: onTap,
       onLongPress: onLongPress,
@@ -731,7 +731,7 @@ class _ChannelRow extends StatelessWidget {
               checked!
                   ? Icons.check_box_rounded
                   : Icons.check_box_outline_blank_rounded,
-              color: checked! ? VistaColors.accent : VistaColors.textTertiary,
+              color: checked! ? VistaColors.accent : VistaColors.textSecondary,
             ),
             const SizedBox(width: 12),
           ],
@@ -743,7 +743,7 @@ class _ChannelRow extends StatelessWidget {
                 fontWeight: FontWeight.w800,
                 color: c.renumbered
                     ? VistaColors.accent
-                    : VistaColors.textTertiary,
+                    : VistaColors.textSecondary,
               ),
             ),
           ),
@@ -769,7 +769,9 @@ class _ChannelRow extends StatelessWidget {
                   notes.join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+                  style: t.bodySmall?.copyWith(
+                    color: VistaColors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -867,7 +869,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
+        SnackBar(content: Text(text), duration: VistaMotion.toast),
       );
   }
 
@@ -1006,7 +1008,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
     final t = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.only(top: 28),
-      child: Glass(
+      child: VistaPanel(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1208,7 +1210,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
       Text(
         'Loghi di tv-logos (GitHub) che corrispondono alla ricerca, '
         'oppure un link a un\'immagine.',
-        style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+        style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
       ),
       const SizedBox(height: 12),
       TvTextField(
@@ -1246,7 +1248,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
                 width: 96,
                 height: 96,
                 child: FocusCard(
-                  radius: 20,
+                  radius: VistaRadius.panel,
                   selected: c.customLogo == url,
                   padding: const EdgeInsets.all(12),
                   onTap: () => _setLogo(url),
@@ -1294,7 +1296,7 @@ class _ChannelEditScreenState extends State<ChannelEditScreen> {
       Text(
         'Unisci qui i canali doppi: i loro flussi diventano alternative di '
         'questo canale, ordinate per qualità.',
-        style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+        style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
       ),
       const SizedBox(height: 10),
       Text(

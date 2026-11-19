@@ -28,7 +28,7 @@ class ChannelTile extends StatelessWidget {
     final best = channel.bestQuality;
     return FocusCard(
       autofocus: autofocus,
-      radius: VistaRadius.poster,
+      radius: VistaRadius.card,
       padding: const EdgeInsets.all(12),
       onTap: onTap,
       onLongPress: onLongPress,
@@ -52,7 +52,9 @@ class ChannelTile extends StatelessWidget {
                   channel.streams.length > 1
                       ? '${channel.streams.length} flussi'
                       : '1 flusso',
-                  style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+                  style: t.bodySmall?.copyWith(
+                    color: VistaColors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -76,7 +78,7 @@ class Pill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: filled ? VistaColors.accent : null,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(VistaRadius.full),
         border: Border.all(color: VistaColors.accent.withValues(alpha: 0.6)),
       ),
       child: Text(
@@ -84,7 +86,7 @@ class Pill extends StatelessWidget {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w800,
-          color: filled ? VistaColors.onPrimary : VistaColors.accent,
+          color: filled ? VistaColors.onAccent : VistaColors.accent,
         ),
       ),
     );

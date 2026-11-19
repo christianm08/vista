@@ -92,10 +92,6 @@ class _VistaAppState extends State<VistaApp> with WidgetsBindingObserver {
       showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xF0121720),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(VistaRadius.card),
-          ),
           title: Row(
             children: [
               const Icon(Icons.notifications_active_outlined),

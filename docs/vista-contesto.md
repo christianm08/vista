@@ -89,33 +89,30 @@ Pubblico iniziale: l'autore e i suoi amici, insoddisfatti di IPTV Smarters, OTT 
 - Profili con PIN.
 - Offline-first; in caso di modifiche contemporanee vince la più recente.
 
-## Design — stile scelto: "B · Vetro"
-- **Font:** Plus Jakarta Sans (400–800).
-- **Sfondo:**
-  - colore `#07090D`; varianti a scelta "Notte" `#07090D`, "Nero" `#000000`, "Blu notte" `#070B14`;
-  - aloni sfocati sotto le superfici: verde acqua `#1E6B73`, pesca `#E08A55`, viola `#4B3A8C`, con blur di circa 80–90 px e opacità 0,4–0,6.
-- **Superfici di vetro:**
-  - riempimento `rgba(255,255,255,.06/.09/.15)`;
-  - bordo `rgba(255,255,255,.14)`;
-  - `backdrop-filter: blur(24px) saturate(1.4)`;
-  - pannelli su immagine: `rgba(16,22,28,.42)`.
-- **Testo:** `#FFFFFF`, secondario al 74%, terziario al 58%.
-- **Pulsante principale:** pillola bianca con testo `#0B0D12`. La voce attiva nelle barre e nei filtri a segmenti usa lo stesso stile.
-- **Accento predefinito:** pesca `#F6C59A`, usato per barre di avanzamento e piccoli dettagli. 12 accenti a scelta (stile KIPTV): Pesca, Arancio, Corallo, Fucsia, Viola, Indaco, Azzurro, Turchese, Verde, Lime, Argento, Bianco.
-- **Raggi:** hero 34, card 28, player 28, locandine 20, chip e pulsanti a pillola.
+## Design — redesign di novembre 2026 (sostituisce lo stile "Vetro")
+- **Fonte di verità:** i token in `app/lib/tokens.dart`; il tema Material in `app/lib/theme.dart`. Nessun colore, raggio o durata scritti a mano fuori dai token: lo controlla `app/test/design_tokens_test.dart`. Galleria dei componenti: `gallery_screen.dart`.
+- **Font:** Bricolage Grotesque per titoli e numeri grandi, Instrument Sans per il testo.
+- **Colori:** superfici piene e scure, senza vetro, blur né aloni.
+  - Fondo `#0C0D0C`; superficie `#161816`, alta `#1F221F`, selezionata `#2A2F27`; contorno `#2E322D`.
+  - Testo `#F2F3EE`, corpo `#D4D7CF`, secondario `#A9ADA4`.
+  - Un solo accento, lime `#C8F250`, per avanzamento, "in onda" e pulsante principale; errore `#FF8A7A`.
+  - Sugli artwork i veli (`VistaScrims`) sfumano nel fondo; il testo sta solo dove il velo copre almeno il 90%.
+- **Spaziature:** scala 4, 8, 12, 16, 24, 32, 48, 64.
+- **Raggi:** chip 8, card e locandine 12, pannelli e dialoghi 20, pulsanti a pillola.
+- **Fuoco (telecomando):** anello bianco di 3 px staccato di 3 px dal bordo, disegnato fuori dall'elemento; ingrandimento 1,06× per le card e 1,04× per i pulsanti. Il fuoco non fa scorrere da solo: le righe e le griglie tengono l'elemento in vista. Il tocco non sposta il fuoco.
 - **Navigazione:**
-  - telefono: barra a pillola fluttuante (66 px), la voce attiva è una pillola bianca con l'etichetta;
-  - PC/TV: barra laterale fluttuante a vetro.
-- **Home:** saluto ("Buonasera / Cosa guardiamo?"), filtro a segmenti, card hero con pannello di vetro, righe orizzontali "In onda ora" e poster.
-- **TV:** focus con contorno bianco e ingrandimento di circa 1,08×. Testare su un box Android TV economico per garantire i 60 fps.
-- **Riferimento KIPTV** (kiptv.app): tema per lista, 12 accenti, 3 sfondi, Multiview, Replay, sincronizzazione, selettore di qualità. **Gli screenshot non sono ancora stati visti**: l'utente li deve fornire.
+  - telefono: barra in basso;
+  - PC e TV: barra laterale stretta con le icone, che si apre con le etichette; su TV, quando si apre, spinge il contenuto.
+- **TV:** tela larga 1280 punti scalata sullo schermo, area sicura del 5%. Testare su un box Android TV economico per garantire i 60 fps.
+- **Movimento:** durate e curve in `VistaMotion`; con "animazioni ridotte" restano solo dissolvenze brevi.
+- **Non ancora ridisegnate** (colori e raggi sui token, spaziature ancora scritte a mano): Gestisci canali, Importazione, I miei servizi, Registrazioni, Multiview, player dei film.
 
 ## Materiale esistente
-- **Prototipo funzionante** in stile Vetro, solo frontend con dati finti: `prototipo-vista.html` (allegato). Link condiviso: https://claude.ai/artifact/QGNQDdKi49q6RnPLJDdMYD
+- **Prototipo funzionante** nel vecchio stile Vetro (superato dal redesign), solo frontend con dati finti: `prototipo-vista.html` (allegato). Link condiviso: https://claude.ai/artifact/QGNQDdKi49q6RnPLJDdMYD
   - Contiene in JS `parseM3U`, `normalize`, `resolve` (il raggruppamento), una guida TV generata e la lista di esempio `SAMPLE_M3U`.
   - Risultato provato: 30 voci → 20 canali, 8 raggruppati. Rai 1 raggruppa 4K, FHD, HD e la voce "IT: Rai Uno SD"; Rai 4, Canale 5 +1 e Rai 3 TGR Lazio restano canali separati.
   - Da portare in Dart come riferimento e test.
-- **Canvas di mockup:** https://claude.ai/artifact/FR7GNK1QwVjwZcvhUxxte6 (privato). Contiene una prima versione per telefono e TV, più la pagina "Stili a confronto"; lo stile scelto è B.
+- **Canvas di mockup:** https://claude.ai/artifact/FR7GNK1QwVjwZcvhUxxte6 (privato). Contiene una prima versione per telefono e TV, più la pagina "Stili a confronto"; lo stile scelto allora era B, poi superato dal redesign di novembre 2026.
 
 ## Distribuzione
 - **Android / Android TV:** APK installato a mano (sulla TV tramite l'app Downloader) con controllo aggiornamenti dentro l'app, oppure test chiuso su Google Play.

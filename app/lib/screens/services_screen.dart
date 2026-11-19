@@ -103,7 +103,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                           padding: EdgeInsets.all(g),
                           child: Text(
                             '${snap.error}',
-                            style: const TextStyle(color: Color(0xFFFF9C8A)),
+                            style: const TextStyle(color: VistaColors.error),
                           ),
                         );
                       }
@@ -124,7 +124,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                     'Questo prodotto usa l\'API di TMDB ma non è approvato né certificato da TMDB. '
                     'I dati sulla disponibilità nei servizi sono forniti da JustWatch.',
                     style: t.bodySmall?.copyWith(
-                      color: VistaColors.textTertiary,
+                      color: VistaColors.textSecondary,
                     ),
                   ),
                 ),
@@ -139,7 +139,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
   Widget _keyCard(BuildContext context, bool ready) {
     final t = Theme.of(context).textTheme;
     final tmdb = AppScope.of(context).tmdb;
-    return Glass(
+    return VistaPanel(
       radius: VistaRadius.card,
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -205,7 +205,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
           ),
           if (_keyError != null) ...[
             const SizedBox(height: 8),
-            Text(_keyError!, style: const TextStyle(color: Color(0xFFFF9C8A))),
+            Text(_keyError!, style: const TextStyle(color: VistaColors.error)),
           ],
           if (!ready) ...[
             const SizedBox(height: 4),
@@ -264,7 +264,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
           const SizedBox(height: 4),
           Text(
             'Scopri mostrerà i loro cataloghi e "Disponibile su" li metterà per primi.',
-            style: t.bodySmall?.copyWith(color: VistaColors.textTertiary),
+            style: t.bodySmall?.copyWith(color: VistaColors.textSecondary),
           ),
           const SizedBox(height: 14),
           Wrap(
@@ -275,11 +275,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 SizedBox(
                   width: tileW,
                   child: FocusCard(
-                    radius: 14,
+                    radius: VistaRadius.card,
                     focusScale: 1.05,
                     fill: mine.contains(p.id)
-                        ? const Color(0x26F6C59A)
-                        : VistaColors.glass,
+                        ? VistaColors.surfaceSelected
+                        : VistaColors.surface,
                     padding: const EdgeInsets.all(10),
                     onTap: () {
                       final next = [...user.services];
